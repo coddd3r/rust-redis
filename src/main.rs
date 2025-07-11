@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use std::io::{prelude::*, BufReader, Write};
+use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 
 fn main() {
@@ -18,29 +18,19 @@ fn main() {
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(stream: TcpStream) {
     // stream.write_all(b"+PONG\r\n").unwrap();
     let buf_reader = BufReader::new(&stream);
-    let request: Vec<_> = buf_reader
-        .lines()
-        //.map(|result| stream.write_all(b"+PONG\r\n").unwrap())
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
-    request
-        .iter()
-        .for_each(|_| stream.write_all(b"+PONG\r\n").unwrap())
-    /*let mut line = String::new();
-
-    loop {
-        let line_bytes = buf_reader.read_line(&mut line);
-        match line_bytes {
-            Ok(0) => break,
-            Ok(_) => stream.write_all(b"+PONG\r\n").unwrap(),
-            Err(e) => {
-                println!("Error reading: {}", e);
-                break;
+    let mut writer = BufWriter::new(&stream);
+    for line in buf_reader.lines() {
+        match line {
+            Ok(l) => {
+                if l.is_empty() {
+                    break;
+                }
+                writer.write_all(b"+PONG\r\n").unwrap();
             }
+            Err(e) => eprintln!("{}", e),
         }
-    }*/
+    }
 }
