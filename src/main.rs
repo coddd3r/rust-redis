@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 
@@ -9,7 +10,7 @@ fn main() {
         match stream {
             Ok(_stream) => {
                 println!("accepted new connection");
-                handle_client(_stream);
+                handle_client(_stream).unwrap();
             }
             Err(e) => {
                 println!("error: {}", e);
@@ -18,19 +19,14 @@ fn main() {
     }
 }
 
-fn handle_client(stream: TcpStream) {
-    // stream.write_all(b"+PONG\r\n").unwrap();
-    let buf_reader = BufReader::new(&stream);
-    let mut writer = BufWriter::new(&stream);
-    for line in buf_reader.lines() {
-        match line {
-            Ok(l) => {
-                if l.is_empty() {
-                    break;
-                }
-                writer.write_all(b"+PONG\r\n").unwrap();
-            }
-            Err(e) => eprintln!("{}", e),
+fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+    let mut buffer = [0u8; 512];
+    loop {
+        let read_bytes = stream.read(&mut buffer).unwrap();
+        if read_bytes == 0 {
+            break;
         }
+        stream.write_all(b"+PONG\r\n").unwrap();
     }
+    Ok(())
 }
