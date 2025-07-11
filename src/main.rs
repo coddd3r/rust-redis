@@ -21,8 +21,26 @@ fn main() {
 fn handle_client(mut stream: TcpStream) {
     // stream.write_all(b"+PONG\r\n").unwrap();
     let buf_reader = BufReader::new(&stream);
-    let _ = buf_reader
+    let request: Vec<_> = buf_reader
         .lines()
-        .map(|result| stream.write_all(b"+PONG\r\n").unwrap())
-        .take_while(|line| !line.is_empty());
+        //.map(|result| stream.write_all(b"+PONG\r\n").unwrap())
+        .map(|result| result.unwrap())
+        .take_while(|line| !line.is_empty())
+        .collect();
+    request
+        .iter()
+        .for_each(|_| stream.write_all(b"+PONG\r\n").unwrap())
+    /*let mut line = String::new();
+
+    loop {
+        let line_bytes = buf_reader.read_line(&mut line);
+        match line_bytes {
+            Ok(0) => break,
+            Ok(_) => stream.write_all(b"+PONG\r\n").unwrap(),
+            Err(e) => {
+                println!("Error reading: {}", e);
+                break;
+            }
+        }
+    }*/
 }
