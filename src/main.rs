@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
@@ -15,8 +16,9 @@ fn main() {
         match stream {
             Ok(_stream) => {
                 println!("accepted new connection");
-                stream_pool.execute(|| {
-                    let res = handle_client(_stream);
+                stream_pool.execute(move || {
+                    let fake_db: HashMap<String, String> = HashMap::new();
+                    let res = handle_client(_stream, fake_db);
                     match res {
                         Ok(_) => (),
                         Err(e) => eprintln!("Error handling client {}", e),
@@ -31,7 +33,10 @@ fn main() {
     println!("Shutting down.");
 }
 
-fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+fn handle_client(
+    mut stream: TcpStream,
+    mut fake_db: HashMap<String, String>,
+) -> Result<(), Box<dyn Error>> {
     loop {
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
@@ -46,7 +51,27 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
             }
             "echo" => {
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
-                stream.write_all(&resp).unwrap()
+                stream.write_all(&resp).unwrap();
+            }
+            "set" => {
+                let k = all_lines[3].clone();
+                let v = all_lines[5].clone();
+                let _res = fake_db.insert(k, v).unwrap();
+
+                stream.write_all(b"+OK\r\n").unwrap();
+            }
+            "get" => {
+                let res = fake_db.get(&all_lines[3]).unwrap();
+                let res_size = res.len();
+                let resp = [
+                    b"$",
+                    res_size.to_string().as_bytes(),
+                    b"\r\n",
+                    res.as_bytes(),
+                    b"\r\n",
+                ]
+                .concat();
+                stream.write_all(&resp).unwrap();
             }
             _ => unreachable!(),
         }
@@ -68,4 +93,9 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
         all_lines.push(my_iter.next()?.unwrap());
     }
     Some(all_lines)
+}
+
+fn respond(mut stream: TcpStream, response: String) {
+    let resp = [b"+", response.as_bytes(), b"\r\n"].concat();
+    stream.write_all(&resp).unwrap();
 }
