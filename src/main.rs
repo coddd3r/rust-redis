@@ -3,7 +3,9 @@ use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 
-use codecrafters_redis::ThreadPool;
+//use codecrafters-redis::ThreadPool;
+mod threadpool;
+use threadpool::ThreadPool;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
