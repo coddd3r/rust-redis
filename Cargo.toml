@@ -1,5 +1,6 @@
 [package]
-name = "codecrafters-redis"
+#name = "codecrafters-redis"
+name = "codecrafters_redis"
 version = "0.1.0"
 authors = ["Codecrafters <hello@codecrafters.io>"]
 edition = "2021"
