@@ -77,8 +77,10 @@ fn handle_client(
                 stream.write_all(b"+OK\r\n").unwrap();
             }
             "get" => {
+                eprintln!("IN GET");
                 if let Some(res) = fake_db.get(&all_lines[3]) {
                     if res.1.is_none() || (res.1.is_some() && res.1.unwrap() < Instant::now()) {
+                        eprintln!("in get TIME STILL");
                         let res_size = res.0.len();
                         let resp = [
                             b"$",
@@ -90,9 +92,11 @@ fn handle_client(
                         .concat();
                         stream.write_all(&resp).unwrap();
                     } else {
+                        eprintln!("in get TIME OVER");
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
                 } else {
+                    eprintln!("IN GET FOUND NOTHING");
                     stream.write_all(b"$-1\r\n").unwrap();
                 }
             }
