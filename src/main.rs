@@ -58,7 +58,8 @@ fn handle_client(
             "set" => {
                 let k = all_lines[3].clone();
                 let v = all_lines[5].clone();
-                if all_lines[7].to_lowercase() == "px" {
+
+                if all_lines.len() > 6 && all_lines[7].to_lowercase() == "px" {
                     let _res = fake_db.insert(
                         k,
                         (
