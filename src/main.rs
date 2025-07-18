@@ -56,22 +56,27 @@ fn handle_client(
             "set" => {
                 let k = all_lines[3].clone();
                 let v = all_lines[5].clone();
-                let _res = fake_db.insert(k, v).unwrap();
+                eprintln!("inserting k:{k}, v:{v}");
+                let _res = fake_db.insert(k, v);
 
                 stream.write_all(b"+OK\r\n").unwrap();
             }
             "get" => {
-                let res = fake_db.get(&all_lines[3]).unwrap();
-                let res_size = res.len();
-                let resp = [
-                    b"$",
-                    res_size.to_string().as_bytes(),
-                    b"\r\n",
-                    res.as_bytes(),
-                    b"\r\n",
-                ]
-                .concat();
-                stream.write_all(&resp).unwrap();
+                eprintln!("in get:{}", all_lines[3]);
+                if let Some(res) = fake_db.get(&all_lines[3]) {
+                    let res_size = res.len();
+                    let resp = [
+                        b"$",
+                        res_size.to_string().as_bytes(),
+                        b"\r\n",
+                        res.as_bytes(),
+                        b"\r\n",
+                    ]
+                    .concat();
+                    stream.write_all(&resp).unwrap();
+                } else {
+                    stream.write_all(b"$-1\r\n").unwrap();
+                }
             }
             _ => unreachable!(),
         }
@@ -93,9 +98,4 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
         all_lines.push(my_iter.next()?.unwrap());
     }
     Some(all_lines)
-}
-
-fn respond(mut stream: TcpStream, response: String) {
-    let resp = [b"+", response.as_bytes(), b"\r\n"].concat();
-    stream.write_all(&resp).unwrap();
 }
