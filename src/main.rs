@@ -4,7 +4,6 @@ use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::usize;
 
-//use codecrafters-redis::ThreadPool;
 mod threadpool;
 use threadpool::ThreadPool;
 
@@ -33,30 +32,32 @@ fn main() {
 }
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    let reader = BufReader::new(&stream);
-    let mut all_lines = Vec::new();
-    let mut my_iter = reader.lines();
-    let arr_length = my_iter.next().unwrap().unwrap()[1..]
-        .parse::<usize>()
-        .unwrap()
-        * 2;
-    eprintln!("length: {arr_length}");
-    for _ in 0..arr_length {
-        all_lines.push(my_iter.next().unwrap().unwrap());
-    }
-    eprintln!("ALL LINES:{:?}", all_lines);
-
-    let cmd = &all_lines[1];
-
-    match cmd.to_lowercase().as_str() {
-        "ping" => {
-            stream.write_all(b"+PONG\r\n").unwrap();
+    loop {
+        let reader = BufReader::new(&stream);
+        let mut all_lines = Vec::new();
+        let mut my_iter = reader.lines();
+        let Some(arr_length) = my_iter.next() else {
+            break;
+        };
+        let arr_length = arr_length.unwrap()[1..].parse::<usize>().unwrap() * 2;
+        eprintln!("length: {arr_length}");
+        for _ in 0..arr_length {
+            all_lines.push(my_iter.next().unwrap().unwrap());
         }
-        "echo" => {
-            let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
-            stream.write_all(&resp).unwrap()
+        eprintln!("ALL LINES:{:?}", all_lines);
+
+        let cmd = &all_lines[1];
+
+        match cmd.to_lowercase().as_str() {
+            "ping" => {
+                stream.write_all(b"+PONG\r\n").unwrap();
+            }
+            "echo" => {
+                let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
+                stream.write_all(&resp).unwrap()
+            }
+            i => eprintln!("UNEXPECTED INPUT {i}"),
         }
-        i => eprintln!("UNEXPECTED INPUT {i}"),
     }
     Ok(())
 }
