@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
+use std::time::Duration;
 use std::usize;
 
+use std::time::Instant;
 mod threadpool;
 use threadpool::ThreadPool;
 
@@ -17,7 +19,7 @@ fn main() {
             Ok(_stream) => {
                 println!("accepted new connection");
                 stream_pool.execute(move || {
-                    let fake_db: HashMap<String, String> = HashMap::new();
+                    let fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
                     let res = handle_client(_stream, fake_db);
                     match res {
                         Ok(_) => (),
@@ -35,7 +37,7 @@ fn main() {
 
 fn handle_client(
     mut stream: TcpStream,
-    mut fake_db: HashMap<String, String>,
+    mut fake_db: HashMap<String, (String, Option<Instant>)>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
         let Some(all_lines) = decode_bulk_string(&stream) else {
@@ -56,24 +58,40 @@ fn handle_client(
             "set" => {
                 let k = all_lines[3].clone();
                 let v = all_lines[5].clone();
-                eprintln!("inserting k:{k}, v:{v}");
-                let _res = fake_db.insert(k, v);
-
+                if all_lines[7].to_lowercase() == "px" {
+                    let _res = fake_db.insert(
+                        k,
+                        (
+                            v,
+                            Some(
+                                Instant::now()
+                                    + std::time::Duration::from_millis(
+                                        all_lines[9].parse().unwrap(),
+                                    ),
+                            ),
+                        ),
+                    );
+                } else {
+                    fake_db.insert(k, (v, None));
+                }
                 stream.write_all(b"+OK\r\n").unwrap();
             }
             "get" => {
-                eprintln!("in get:{}", all_lines[3]);
                 if let Some(res) = fake_db.get(&all_lines[3]) {
-                    let res_size = res.len();
-                    let resp = [
-                        b"$",
-                        res_size.to_string().as_bytes(),
-                        b"\r\n",
-                        res.as_bytes(),
-                        b"\r\n",
-                    ]
-                    .concat();
-                    stream.write_all(&resp).unwrap();
+                    if res.1.is_none() || (res.1.is_some() && res.1.unwrap() < Instant::now()) {
+                        let res_size = res.0.len();
+                        let resp = [
+                            b"$",
+                            res_size.to_string().as_bytes(),
+                            b"\r\n",
+                            res.0.as_bytes(),
+                            b"\r\n",
+                        ]
+                        .concat();
+                        stream.write_all(&resp).unwrap();
+                    } else {
+                        stream.write_all(b"$-1\r\n").unwrap();
+                    }
                 } else {
                     stream.write_all(b"$-1\r\n").unwrap();
                 }
