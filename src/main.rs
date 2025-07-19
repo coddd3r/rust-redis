@@ -4,23 +4,37 @@ use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
-use std::usize;
-
 use std::time::Instant;
+use std::usize;
 mod threadpool;
 use threadpool::ThreadPool;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
+    let arg_list = std::env::args();
+    eprintln!("ARGS:{:?}", &arg_list);
+    let mut dir = None;
+    let mut db_filename = None;
+    let mut b = arg_list.into_iter();
+    while let Some(a) = b.next() {
+        if a.as_str() == "--dir" {
+            dir = b.next();
+        }
+        if a.as_str() == "--dbfilenmae" {
+            db_filename = b.next();
+        }
+    }
+
     let stream_pool = ThreadPool::new(4);
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
                 println!("accepted new connection");
+                let dir_arg = dir.clone();
+                let db_arg = db_filename.clone();
                 stream_pool.execute(move || {
-                    let fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
-                    let res = handle_client(_stream, fake_db);
+                    let res = handle_client(_stream, dir_arg, db_arg);
                     match res {
                         Ok(_) => (),
                         Err(e) => eprintln!("Error handling client {}", e),
@@ -37,8 +51,11 @@ fn main() {
 
 fn handle_client(
     mut stream: TcpStream,
-    mut fake_db: HashMap<String, (String, Option<Instant>)>,
+    dir: Option<String>,
+    db_filename: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
+    let mut fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
+
     loop {
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
@@ -99,6 +116,25 @@ fn handle_client(
                 } else {
                     eprintln!("IN GET FOUND NOTHING");
                     stream.write_all(b"$-1\r\n").unwrap();
+                }
+            }
+            "config" => {
+                let config_command = all_lines[3].to_lowercase();
+                let config_field = all_lines[5].to_lowercase();
+                match config_command.as_str() {
+                    "get" => match config_field.as_str() {
+                        "dir" => {
+                            let resp = [b"+", dir.as_ref().unwrap().as_bytes(), b"\r\n"].concat();
+                            stream.write_all(&resp).unwrap();
+                        }
+                        "dbfilename" => {
+                            let resp = [b"+", (db_filename.as_ref()).unwrap().as_bytes(), b"\r\n"]
+                                .concat();
+                            stream.write_all(&resp).unwrap();
+                        }
+                        _ => unreachable!(),
+                    },
+                    _ => {}
                 }
             }
             _ => unreachable!(),
