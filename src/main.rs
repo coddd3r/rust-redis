@@ -127,7 +127,7 @@ fn handle_client(
                             let dir_name = dir.as_ref().unwrap();
                             let dir_name_length = dir_name.len().to_string();
                             let resp = [
-                                b"*2\r\n$3\r\ndir\r\n",
+                                b"*2\r\n$3\r\ndir\r\n$",
                                 dir_name_length.as_bytes(),
                                 b"\r\n",
                                 dir_name.as_bytes(),
@@ -140,9 +140,9 @@ fn handle_client(
                             let db_name = db_filename.as_ref().unwrap();
                             let db_name_length = db_name.len().to_string();
                             let resp = [
-                                b"*2\r\n$3\r\ndir\r\n",
+                                b"*2\r\n$3\r\ndir\r\n$",
                                 db_name_length.as_bytes(),
-                                b"+",
+                                b"\r\n",
                                 db_name.as_bytes(),
                                 b"\r\n",
                             ]
