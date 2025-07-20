@@ -173,52 +173,56 @@ fn handle_client(
                         eprintln!("FOUND DIR");
                         // create a new file path
                         // then write current hashmap to rdb
-                        let path = Path::new(&directory);
+                        let path = Path::new(directory);
                         let path = path.join(file);
+                        eprintln!("USING PATH:{:?}", &path);
 
-                        // TODO: HANDLE error
-                        let rdb = read_rdb_file(path).unwrap();
-
-                        //get by index
-                        let mut ret_keys = Vec::new();
-                        if let Some(db) = rdb.databases.get(&0) {
-                            eprintln!("GOT DB FROM RDB FILE");
-                            match all_lines[3].as_str() {
-                                "*" => {
-                                    eprintln!("GOT * search");
-                                    db.data.iter().for_each(|(k, _)| {
-                                        ret_keys.push(k);
-                                    });
-                                }
-                                others => {
-                                    let search_strings: Vec<&str> =
-                                        all_lines[3].split("*").collect();
-
-                                    eprintln!(
-                                        "GOT OTHERS search:{others}, searching with {:?}",
-                                        search_strings
-                                    );
-                                    db.data.iter().for_each(|(k, _)| {
-                                        if search_strings.iter().all(|e| k.contains(e)) {
-                                            ret_keys.push(k);
+                        match read_rdb_file(path) {
+                            Ok(rdb) => {
+                                eprintln!("Successful rdb read");
+                                let mut ret_keys = Vec::new();
+                                //get by index
+                                if let Some(db) = rdb.databases.get(&0) {
+                                    eprintln!("GOT DB FROM RDB FILE");
+                                    match all_lines[3].as_str() {
+                                        "*" => {
+                                            eprintln!("GOT * search");
+                                            db.data.iter().for_each(|(k, _)| {
+                                                ret_keys.push(k);
+                                            });
                                         }
+                                        others => {
+                                            let search_strings: Vec<&str> =
+                                                all_lines[3].split("*").collect();
+
+                                            eprintln!(
+                                                "GOT OTHERS search:{others}, searching with {:?}",
+                                                search_strings
+                                            );
+                                            db.data.iter().for_each(|(k, _)| {
+                                                if search_strings.iter().all(|e| k.contains(e)) {
+                                                    ret_keys.push(k);
+                                                }
+                                            });
+                                        }
+                                    }
+                                    //EXAMPLE: *1\r\n$3\r\nfoo\r\n
+                                    let _ = stream.write_all(
+                                        &[b"*", ret_keys.len().to_string().as_bytes()].concat(),
+                                    );
+                                    ret_keys.iter().enumerate().for_each(|(_, e)| {
+                                        //let _ =
+                                        //    stream.write_all(&[i.to_string().as_bytes(), b") "].concat());
+                                        let _ = stream.write_all(&write_resp_array(e));
                                     });
                                 }
                             }
-                            //EXAMPLE: *1\r\n$3\r\nfoo\r\n
-                            let _ = stream
-                                .write_all(&[b"*", ret_keys.len().to_string().as_bytes()].concat());
-                            ret_keys.iter().enumerate().for_each(|(_, e)| {
-                                //let _ =
-                                //    stream.write_all(&[i.to_string().as_bytes(), b") "].concat());
-                                let _ = stream.write_all(&write_resp_array(e));
-                            });
-                        } else {
-                            eprintln!("FAILED TO FIND redisdb");
-                            stream.write_all(b"$-1\r\n").unwrap();
+                            Err(e) => {
+                                eprintln!("failed to read from rdb file {:?}", e);
+                            }
                         }
                     } else {
-                        eprintln!("FAILED TO FIND DB");
+                        eprintln!("FAILED TO FIND DIR");
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
                 } else {
