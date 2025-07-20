@@ -19,6 +19,7 @@ use crate::types::{Expiration, RedisDatabase, RedisValue};
 use std::io::{Read, Write};
 
 pub const DB_SELECTOR: u8 = 0xFE;
+pub const DB_INDEX_0: u8 = 0x00;
 pub const EXPIRY_SECONDS: u8 = 0xFD;
 pub const EXPIRY_MILLISECONDS: u8 = 0xFC;
 pub const RESIZEDB: u8 = 0xFB;
@@ -26,6 +27,7 @@ pub const EOF: u8 = 0xFF;
 pub const STRING_TYPE: u8 = 0x00;
 
 pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
+    eprintln!("READING DB");
     let mut db = RedisDatabase::new();
 
     // Read RESIZEDB info (optional)
@@ -41,6 +43,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
     }
 
     loop {
+        eprintln!("IN READ DB buf[0]: {:#04X?}", buf[0]);
         match buf[0] {
             /* The expire timestamp, expressed in Unix time,
             stored as an 4-byte unsigned long, in little-endian (read right-to-left).*/
@@ -114,6 +117,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
 
 /// Write database to an RDB file
 pub fn write_database<W: Write>(writer: &mut W, db_index: u8, db: &RedisDatabase) -> Result<()> {
+    //eprintln!("")
     // start with a selector and the provided index
     writer.write_all(&[DB_SELECTOR, db_index])?;
 

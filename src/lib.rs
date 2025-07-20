@@ -33,9 +33,11 @@ pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
             break;
         }
 
+        eprintln!("IN DB section loop curr val:{:#04X?}", buf[0]);
         match buf[0] {
             // if a db subsection is found
             database::DB_SELECTOR => {
+                eprintln!("FOUND DB selector");
                 // Read database index, 1 byte
                 let mut db_index_buf = [0u8; 1];
                 reader.read_exact(&mut db_index_buf)?;
@@ -44,10 +46,21 @@ pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
                 let db = database::read_db(reader)?;
                 all_databases.insert(db_index, db);
             }
+            database::DB_INDEX_0 => {
+                eprintln!("FOUND DB selector");
+                //metadata consumes the FE, so we just start from index num
+                let db_index = buf[0];
+
+                let db = database::read_db(reader)?;
+                all_databases.insert(db_index, db);
+            }
 
             database::EOF => break,
             // anything else is invalid
-            _ => return Err(RdbError::InvalidValueType(buf[0])),
+            _ => {
+                eprintln!("DATABSE LOOP ERROR UNRECOGNIZED BYTES AT BEGINNIN OF A DB SECTION");
+                return Err(RdbError::InvalidValueType(buf[0]));
+            }
         }
     }
     Ok(RdbFile {
@@ -70,9 +83,11 @@ pub fn write_rdb_file<P: AsRef<Path>>(path: P, rdb: &RdbFile) -> Result<()> {
 /// Writes RDB data to a writer
 pub fn write_rdb<W: Write>(writer: &mut W, rdb: &RdbFile) -> Result<()> {
     // Write header
+    eprintln!("writing header to rdb");
     header::write_header(writer, &rdb.version)?;
 
     // Write metadata
+    eprintln!("Writing metadata to RDB");
     metadata::write_metadata(writer, &rdb.metadata)?;
 
     // Write databases

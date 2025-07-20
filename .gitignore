@@ -11,4 +11,4 @@ target/
 
 extras.txt
 extras/
-
+**/dump.rdb

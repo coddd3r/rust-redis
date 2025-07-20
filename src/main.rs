@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::Instant;
-use std::usize;
+use std::{env, usize};
 mod threadpool;
 use codecrafters_redis::{
     read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
@@ -183,7 +183,7 @@ fn handle_client(
                                 let mut ret_keys = Vec::new();
                                 //get by index
                                 if let Some(db) = rdb.databases.get(&0) {
-                                    eprintln!("GOT DB FROM RDB FILE");
+                                    eprintln!("GOT DB FROM RDB FILE {:?}", db);
                                     match all_lines[3].as_str() {
                                         "*" => {
                                             eprintln!("GOT * search");
@@ -206,9 +206,12 @@ fn handle_client(
                                             });
                                         }
                                     }
+
+                                    eprintln!("All KEYS to return:{:?}", ret_keys);
                                     //EXAMPLE: *1\r\n$3\r\nfoo\r\n
                                     let _ = stream.write_all(
-                                        &[b"*", ret_keys.len().to_string().as_bytes()].concat(),
+                                        &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"]
+                                            .concat(),
                                     );
                                     ret_keys.iter().enumerate().for_each(|(_, e)| {
                                         //let _ =
@@ -231,23 +234,43 @@ fn handle_client(
                 }
             }
             "save" => {
+                eprintln!("IN SAVE");
+                let usefile: &String;
+                let usedir: &String;
+                let mut path: PathBuf;
                 if let Some(file) = &db_filename {
+                    eprintln!("FILE:{file}");
                     if let Some(directory) = &dir {
                         // create a new file path
                         // then write current hashmap to rdb
-                        let mut new_rdb = RdbFile {
-                            version: "0011".to_string(),
-                            metadata: HashMap::new(),
-                            databases: HashMap::new(),
-                        };
-
-                        new_rdb.databases.insert(0, new_db.clone());
-                        let path = Path::new(&directory);
-                        let path = path.join(file);
-
-                        let _ = write_rdb_file(path, &new_rdb);
+                        usefile = file;
+                        usedir = directory;
+                        path = Path::new(&usedir).join(usefile);
+                    } else {
+                        path = env::current_dir().unwrap();
+                        path.push("dump.rdb");
                     }
+                } else {
+                    path = env::current_dir().unwrap();
+                    path.push("dump.rdb");
                 }
+                eprintln!("Path:{:?}", &path);
+                let mut new_rdb = RdbFile {
+                    version: "0011".to_string(),
+                    metadata: HashMap::new(),
+                    databases: HashMap::new(),
+                };
+
+                new_rdb
+                    .metadata
+                    .insert("redis-version".to_string(), "6.0.16".to_string());
+                new_rdb.databases.insert(0, new_db.clone());
+                eprintln!("Creating a new rdb with {:?}", new_rdb);
+
+                let _ = write_rdb_file(path, &new_rdb);
+
+                eprintln!("after SAVE writing to file");
+                stream.write_all(b"+OK\r\n")?;
             }
             _ => unreachable!(),
         }
@@ -257,7 +280,7 @@ fn handle_client(
 
 fn write_resp_array(resp: &String) -> Vec<u8> {
     [
-        b"\r\n$",
+        b"$",
         resp.len().to_string().as_bytes(),
         b"\r\n",
         resp.as_bytes(),
@@ -284,7 +307,10 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     * for each element we'll have 2 lines, one with the size and the other with the text
         so arr_length will ne provided num of elements * 2
     */
-    let arr_length = arr_length.unwrap()[1..].parse::<usize>().unwrap() * 2;
+    let arr_length = arr_length.expect("failed to unwrap arr length line from buf")[1..]
+        .parse::<usize>()
+        .expect("failed to get bulk string element num from stream")
+        * 2;
     for _ in 0..arr_length {
         all_lines.push(my_iter.next()?.unwrap());
     }

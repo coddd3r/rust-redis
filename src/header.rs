@@ -12,6 +12,7 @@ const RDB_HEADER: &[u8] = b"REDIS";
 const RDB_VERSION_LENGTH: usize = 4;
 
 pub fn read_header<R: Read>(reader: &mut R) -> Result<String> {
+    eprintln!("READING HEADER");
     let mut header = vec![0u8; RDB_HEADER.len() + RDB_VERSION_LENGTH];
     reader.read_exact(&mut header)?;
 
@@ -21,6 +22,7 @@ pub fn read_header<R: Read>(reader: &mut R) -> Result<String> {
 
     let version = String::from_utf8(header[RDB_HEADER.len()..].to_vec())
         .map_err(|_| RdbError::InvalidVersion)?;
+    eprintln!("READ HEADER, {version}");
     Ok(version)
 }
 
