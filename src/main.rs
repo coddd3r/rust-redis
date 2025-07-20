@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use std::collections::HashMap;
 use std::error::Error;
+use std::fs::File;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -9,7 +10,7 @@ use std::time::Instant;
 use std::{env, usize};
 mod threadpool;
 use codecrafters_redis::{
-    read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
+    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
 };
 use threadpool::ThreadPool;
 
@@ -177,6 +178,11 @@ fn handle_client(
                         let path = path.join(file);
                         eprintln!("USING PATH:{:?}", &path);
 
+                        let mut file = File::open(&path)?;
+                        let mut buffer = Vec::new();
+                        file.read_to_end(&mut buffer)?;
+
+                        crate::print_hex::print_hex_dump(&buffer);
                         match read_rdb_file(path) {
                             Ok(rdb) => {
                                 eprintln!("Successful rdb read");

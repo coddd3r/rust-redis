@@ -20,6 +20,7 @@ pub fn read_metada<R: Read>(reader: &mut R) -> Result<HashMap<String, String>> {
     let mut metadata = HashMap::new();
     // while there are still metadata sections
     loop {
+        eprintln!("IN METADAT LOOP");
         let mut buf = [0u8; 1];
         reader.read_exact(&mut buf)?;
 

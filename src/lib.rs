@@ -3,6 +3,7 @@ mod encoding;
 mod error;
 mod header;
 mod metadata;
+pub mod print_hex;
 mod types;
 
 pub use error::{RdbError, Result};
