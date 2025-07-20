@@ -165,26 +165,38 @@ fn handle_client(
             }
 
             "keys" => {
+                eprintln!("IN KEYS");
                 if let Some(file) = &db_filename {
+                    eprintln!("FOUND FILE");
                     if let Some(directory) = &dir {
+                        eprintln!("FOUND DIR");
                         // create a new file path
                         // then write current hashmap to rdb
                         let path = Path::new(&directory);
                         let path = path.join(file);
+
                         // TODO: HANDLE error
                         let rdb = read_rdb_file(path).unwrap();
+
                         //get by index
                         let mut ret_keys = Vec::new();
                         if let Some(db) = rdb.databases.get(&0) {
+                            eprintln!("GOT DB FROM RDB FILE");
                             match all_lines[3].as_str() {
                                 "*" => {
+                                    eprintln!("GOT * search");
                                     db.data.iter().for_each(|(k, _)| {
                                         ret_keys.push(k);
                                     });
                                 }
-                                _ => {
+                                others => {
                                     let search_strings: Vec<&str> =
                                         all_lines[3].split("*").collect();
+
+                                    eprintln!(
+                                        "GOT OTHERS search:{others}, searching with {:?}",
+                                        search_strings
+                                    );
                                     db.data.iter().for_each(|(k, _)| {
                                         if search_strings.iter().all(|e| k.contains(e)) {
                                             ret_keys.push(k);
@@ -195,7 +207,9 @@ fn handle_client(
                             //EXAMPLE: *1\r\n$3\r\nfoo\r\n
                             let _ = stream
                                 .write_all(&[b"*", ret_keys.len().to_string().as_bytes()].concat());
-                            ret_keys.iter().for_each(|e| {
+                            ret_keys.iter().enumerate().for_each(|(i, e)| {
+                                //let _ =
+                                //    stream.write_all(&[i.to_string().as_bytes(), b") "].concat());
                                 let _ = stream.write_all(&write_resp_array(e));
                             });
                         }
