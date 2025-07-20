@@ -74,7 +74,7 @@ use super::error::{RdbError, Result};
 use std::io::{Read, Write};
 
 /// Reads a size-encoded value from the stream
-pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
+pub fn read_size<R: Read>(reader: &mut R) -> Result<(usize, Option<Vec<u8>>)> {
     eprintln!("reading first byte for SIZE");
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
@@ -85,7 +85,7 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
         /* If the first two bits are 0b00:
         The size is the remaining 6 bits of the byte.
         In this example, the size is 10: */
-        0b00 => Ok((first_byte & 0b00111111) as usize),
+        0b00 => Ok(((first_byte & 0b00111111) as usize, None)),
 
         /* If the first two bits are 0b01:
            The size is the next 14 bits
@@ -98,7 +98,10 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
             let mut buf = [0u8; 1];
             reader.read_exact(&mut buf)?;
             let second_byte = buf[0];
-            Ok(((first_byte & 0b00111111) as usize) << 8 | second_byte as usize)
+            Ok((
+                ((first_byte & 0b00111111) as usize) << 8 | second_byte as usize,
+                None,
+            ))
         }
 
         /* If the first two bits are 0b10:
@@ -110,13 +113,17 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
         0b10 => {
             let mut buf = [0u8; 4];
             reader.read_exact(&mut buf)?;
-            Ok(u32::from_be_bytes(buf) as usize)
+            Ok((u32::from_be_bytes(buf) as usize, None))
         }
 
         /* If the first two bits are 0b11:
         The remaining 6 bits specify a type of string encoding.
         See string encoding section. */
-        0b11 => Ok(usize::MAX),
+        0b11 => {
+            let mut v = Vec::new();
+            v.push(buf[0]);
+            Ok((usize::MAX, Some(v)))
+        }
         _ => unreachable!(),
     }
 }
@@ -142,9 +149,10 @@ pub fn write_size<W: Write>(writer: &mut W, size: usize) -> Result<()> {
 }
 
 pub fn read_string<R: Read>(reader: &mut R) -> Result<String> {
-    let size = read_size(reader)?;
+    let res = read_size(reader)?;
+    let size = res.0;
     if size == usize::MAX {
-        return read_special_int(reader);
+        return read_special_int(reader, res.1);
     }
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
@@ -163,7 +171,7 @@ pub fn write_string<W: Write>(writer: &mut W, s: &str) -> Result<()> {
 /// Reads a length-prefixed byte array
 pub fn read_bytes<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
     eprintln!("READING SIZE of a byte array");
-    let size = read_size(reader)?;
+    let size = read_size(reader)?.0;
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
     Ok(buf)
@@ -175,17 +183,17 @@ pub fn write_bytes<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
+pub fn read_special_int<R: Read>(reader: &mut R, v: Option<Vec<u8>>) -> Result<String> {
     let mut buf = [0u8; 1];
-    reader.read_exact(&mut buf)?;
+    // reader.read_exact(&mut buf)?;
 
-    let mut ret = String::new();
-    eprintln!("reading special int:{:#04X?}", buf[0]);
-    match buf[0] {
+    let use_vec = v.unwrap()[0];
+    eprintln!("reading special int:{:#04X?}", use_vec);
+    match use_vec {
         0xC0 => {
             // 8-bit
             reader.read_exact(&mut buf)?;
-            ret = buf[0].to_string();
+            let ret = buf[0].to_string();
             eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
@@ -193,7 +201,7 @@ pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
             // 16-bit
             let mut bytes = [0u8; 2];
             reader.read_exact(&mut bytes)?;
-            ret = u16::from_le_bytes(bytes).to_string();
+            let ret = u16::from_le_bytes(bytes).to_string();
             eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
@@ -201,7 +209,7 @@ pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
             // 32-bit
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
-            ret = u32::from_le_bytes(bytes).to_string();
+            let ret = u32::from_le_bytes(bytes).to_string();
             eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
