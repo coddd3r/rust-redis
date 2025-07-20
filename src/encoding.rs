@@ -73,6 +73,7 @@ use std::io::{Read, Write};
 
 /// Reads a size-encoded value from the stream
 pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
+    eprintln!("reading first byte for SIZE");
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
     let first_byte = buf[0];
@@ -113,7 +114,10 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
         /* If the first two bits are 0b11:
         The remaining 6 bits specify a type of string encoding.
         See string encoding section. */
-        0b11 => Err(RdbError::InvalidSizeEncoding),
+        0b11 => {
+            eprintln!("expected first line as size, got string 0b11");
+            Err(RdbError::InvalidSizeEncoding)
+        }
         _ => unreachable!(),
     }
 }
@@ -139,6 +143,7 @@ pub fn write_size<W: Write>(writer: &mut W, size: usize) -> Result<()> {
 }
 
 pub fn read_string<R: Read>(reader: &mut R) -> Result<String> {
+    eprintln!("READING SIZE of a STRING");
     let size = read_size(reader)?;
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
@@ -153,6 +158,7 @@ pub fn write_string<W: Write>(writer: &mut W, s: &str) -> Result<()> {
 
 /// Reads a length-prefixed byte array
 pub fn read_bytes<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
+    eprintln!("READING SIZE of a byte array");
     let size = read_size(reader)?;
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
