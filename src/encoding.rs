@@ -102,7 +102,7 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
         }
 
         /* If the first two bits are 0b10:
-           Ignore the remaining 6 bits of the first byte.
+           Ignore the remaining 6 bits of the first byte.00000040: 2d78 faf9 975b c2                        -x...[.
            The size is the next 4 bytes, in big-endian (read left-to-right).
            In this example, the size is 17000:
         80 00 00 42 68
@@ -116,10 +116,7 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<usize> {
         /* If the first two bits are 0b11:
         The remaining 6 bits specify a type of string encoding.
         See string encoding section. */
-        0b11 => {
-            eprintln!("expected first line as size, got string 0b11");
-            Err(RdbError::InvalidSizeEncoding)
-        }
+        0b11 => Ok(usize::MAX),
         _ => unreachable!(),
     }
 }
@@ -146,6 +143,9 @@ pub fn write_size<W: Write>(writer: &mut W, size: usize) -> Result<()> {
 
 pub fn read_string<R: Read>(reader: &mut R) -> Result<String> {
     let size = read_size(reader)?;
+    if size == usize::MAX {
+        return read_special_int(reader);
+    }
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
     eprintln!("READ SIZE of a STRING, {size}");
@@ -173,4 +173,30 @@ pub fn write_bytes<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
     write_size(writer, bytes.len())?;
     let _ = writer.write_all(bytes);
     Ok(())
+}
+
+pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
+    let mut buf = [0u8; 1];
+    reader.read_exact(&mut buf)?;
+
+    match buf[0] {
+        0xC0 => {
+            // 8-bit
+            reader.read_exact(&mut buf)?;
+            Ok(buf[0].to_string())
+        }
+        0xC1 => {
+            // 16-bit
+            let mut bytes = [0u8; 2];
+            reader.read_exact(&mut bytes)?;
+            Ok(u16::from_le_bytes(bytes).to_string())
+        }
+        0xC2 => {
+            // 32-bit
+            let mut bytes = [0u8; 4];
+            reader.read_exact(&mut bytes)?;
+            Ok(u32::from_le_bytes(bytes).to_string())
+        }
+        _ => Err(RdbError::InvalidStringEncoding),
+    }
 }
