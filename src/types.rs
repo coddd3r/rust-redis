@@ -31,7 +31,7 @@ impl Expiration {
 }
 
 /// Represents a Redis database
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RedisDatabase {
     pub data: HashMap<String, RedisValue>,
 }

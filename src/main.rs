@@ -3,10 +3,14 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 use std::usize;
 mod threadpool;
+use codecrafters_redis::{
+    read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
+};
 use threadpool::ThreadPool;
 
 fn main() {
@@ -54,8 +58,9 @@ fn handle_client(
     dir: Option<String>,
     db_filename: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
+    //let mut fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
 
+    let mut new_db = RedisDatabase::new();
     loop {
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
@@ -77,34 +82,38 @@ fn handle_client(
                 let v = all_lines[5].clone();
 
                 if all_lines.len() > 6 && all_lines[7].to_lowercase() == "px" {
-                    let _res = fake_db.insert(
+                    let _res = new_db.insert(
                         k,
-                        (
-                            v,
-                            Some(
-                                Instant::now()
-                                    + std::time::Duration::from_millis(
-                                        all_lines[9].parse().unwrap(),
-                                    ),
-                            ),
-                        ),
+                        RedisValue {
+                            value: v,
+                            expires_at: Some(Expiration::Seconds(all_lines[9].parse()?)),
+                        },
                     );
                 } else {
-                    fake_db.insert(k, (v, None));
+                    new_db.insert(
+                        k,
+                        RedisValue {
+                            value: v,
+                            expires_at: None,
+                        },
+                    );
                 }
                 stream.write_all(b"+OK\r\n").unwrap();
             }
             "get" => {
                 eprintln!("IN GET");
-                if let Some(res) = fake_db.get(&all_lines[3]) {
-                    if res.1.is_none() || (res.1.is_some() && res.1.unwrap() > Instant::now()) {
+                if let Some(res) = new_db.get(&all_lines[3]) {
+                    if res.expires_at.is_none()
+                        || (res.expires_at.is_some()
+                            && res.expires_at.as_ref().unwrap().is_expired())
+                    {
                         eprintln!("in get TIME STILL");
-                        let res_size = res.0.len();
+                        let res_size = res.value.len();
                         let resp = [
                             b"$",
                             res_size.to_string().as_bytes(),
                             b"\r\n",
-                            res.0.as_bytes(),
+                            res.value.as_bytes(),
                             b"\r\n",
                         ]
                         .concat();
@@ -154,9 +163,63 @@ fn handle_client(
                     _ => {}
                 }
             }
+
+            "keys" => {
+                if let Some(file) = &db_filename {
+                    if let Some(directory) = &dir {
+                        // create a new file path
+                        // then write current hashmap to rdb
+                        let path = Path::new(&directory);
+                        let path = path.join(file);
+                        // TODO: HANDLE error
+                        let rdb = read_rdb_file(path).unwrap();
+                        //get by index
+                        let mut ret_keys = Vec::new();
+                        if let Some(db) = rdb.databases.get(&0) {
+                            match all_lines[3].as_str() {
+                                "*" => {
+                                    db.data.iter().for_each(|(k, _)| {
+                                        ret_keys.push(k);
+                                    });
+                                }
+                                _ => {
+                                    let search_strings: Vec<&str> =
+                                        all_lines[3].split("*").collect();
+                                    db.data.iter().for_each(|(k, _)| {
+                                        if search_strings.iter().all(|e| k.contains(e)) {
+                                            ret_keys.push(k);
+                                        }
+                                    });
+                                }
+                            }
+                            //EXAMPLE: *1\r\n$3\r\nfoo\r\n
+                            let _ = stream
+                                .write_all(&[b"*", ret_keys.len().to_string().as_bytes()].concat());
+                            ret_keys.iter().for_each(|e| {
+                                let _ = stream.write_all(&write_resp_array(e));
+                            });
+                        }
+                    }
+                }
+            }
             "save" => {
-                //TODO
-                todo!("NOT IMPLEMENTED SAVE TO RDB YET");
+                if let Some(file) = &db_filename {
+                    if let Some(directory) = &dir {
+                        // create a new file path
+                        // then write current hashmap to rdb
+                        let mut new_rdb = RdbFile {
+                            version: "0011".to_string(),
+                            metadata: HashMap::new(),
+                            databases: HashMap::new(),
+                        };
+
+                        new_rdb.databases.insert(0, new_db.clone());
+                        let path = Path::new(&directory);
+                        let path = path.join(file);
+
+                        let _ = write_rdb_file(path, &new_rdb);
+                    }
+                }
             }
             _ => unreachable!(),
         }
@@ -164,6 +227,16 @@ fn handle_client(
     Ok(())
 }
 
+fn write_resp_array(resp: &String) -> Vec<u8> {
+    [
+        b"\r\n$",
+        resp.len().to_string().as_bytes(),
+        b"\r\n",
+        resp.as_bytes(),
+        b"\r\n",
+    ]
+    .concat()
+}
 /**
 *
 *   https://redis.io/docs/latest/develop/reference/protocol-spec/#bulk-strings
