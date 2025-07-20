@@ -34,6 +34,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
 
     //if we're resizing, skip hash table sizes
     if buf[0] == RESIZEDB {
+        eprintln!("IN RESIZE OPERATION, skipping bytes");
         read_bytes(reader)?; // keys size
         read_bytes(reader)?; // expires size
         reader.read_exact(&mut buf)?;
@@ -52,6 +53,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
 
                 let k = read_string(reader)?;
                 let v = read_string(reader)?;
+                eprintln!("Sec timeout K:{}, v:{}", &k, &v);
                 db.insert(
                     k,
                     RedisValue {
@@ -71,6 +73,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
 
                 let key = read_string(reader)?;
                 let value = read_string(reader)?;
+                eprintln!("MS timeout K:{}, v:{}", key, value);
                 db.insert(
                     key,
                     RedisValue {
@@ -84,6 +87,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
                 let key = read_string(reader)?;
                 let value = read_string(reader)?;
 
+                eprintln!("STRING no timeout, k:{key}, v:{value}");
                 db.insert(
                     key,
                     RedisValue {
