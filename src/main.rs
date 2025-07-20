@@ -26,7 +26,7 @@ fn main() {
             dir = b.next();
             eprintln!("GOT DIR");
         }
-        if a.as_str() == "--dbfilenmae" {
+        if a.as_str() == "--dbfilename" {
             db_filename = b.next();
             eprintln!("GOT FILE");
         }
