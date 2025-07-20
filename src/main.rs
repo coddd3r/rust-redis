@@ -24,9 +24,11 @@ fn main() {
     while let Some(a) = b.next() {
         if a.as_str() == "--dir" {
             dir = b.next();
+            eprintln!("GOT DIR");
         }
         if a.as_str() == "--dbfilenmae" {
             db_filename = b.next();
+            eprintln!("GOT FILE");
         }
     }
 
@@ -165,7 +167,6 @@ fn handle_client(
             }
 
             "keys" => {
-                eprintln!("IN KEYS");
                 if let Some(file) = &db_filename {
                     eprintln!("FOUND FILE");
                     if let Some(directory) = &dir {
@@ -207,13 +208,22 @@ fn handle_client(
                             //EXAMPLE: *1\r\n$3\r\nfoo\r\n
                             let _ = stream
                                 .write_all(&[b"*", ret_keys.len().to_string().as_bytes()].concat());
-                            ret_keys.iter().enumerate().for_each(|(i, e)| {
+                            ret_keys.iter().enumerate().for_each(|(_, e)| {
                                 //let _ =
                                 //    stream.write_all(&[i.to_string().as_bytes(), b") "].concat());
                                 let _ = stream.write_all(&write_resp_array(e));
                             });
+                        } else {
+                            eprintln!("FAILED TO FIND redisdb");
+                            stream.write_all(b"$-1\r\n").unwrap();
                         }
+                    } else {
+                        eprintln!("FAILED TO FIND DB");
+                        stream.write_all(b"$-1\r\n").unwrap();
                     }
+                } else {
+                    eprintln!("FAILED TO FIND FILE");
+                    stream.write_all(b"$-1\r\n").unwrap();
                 }
             }
             "save" => {
