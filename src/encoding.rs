@@ -176,11 +176,11 @@ pub fn write_bytes<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
 }
 
 pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
-    eprintln!("reading special int");
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
 
     let mut ret = String::new();
+    eprintln!("reading special int:{:#04X?}", buf[0]);
     match buf[0] {
         0xC0 => {
             // 8-bit
@@ -205,6 +205,9 @@ pub fn read_special_int<R: Read>(reader: &mut R) -> Result<String> {
             eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
-        _ => Err(RdbError::InvalidStringEncoding),
+        _ => {
+            eprintln!("FAILED special int, with buf:{:#04X?}", buf[0]);
+            Err(RdbError::InvalidStringEncoding)
+        }
     }
 }
