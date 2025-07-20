@@ -33,7 +33,9 @@ pub fn read_metada<R: Read>(reader: &mut R) -> Result<HashMap<String, String>> {
         }
 
         let k = read_string(reader)?;
+        eprintln!("read key:{k}");
         let v = read_string(reader)?;
+        eprintln!("read value:{v}");
         eprintln!("read metadata key:{k}, value{v}");
         metadata.insert(k, v);
     }
