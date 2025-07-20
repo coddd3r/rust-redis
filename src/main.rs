@@ -182,7 +182,8 @@ fn handle_client(
                         let mut buffer = Vec::new();
                         file.read_to_end(&mut buffer)?;
 
-                        crate::print_hex::print_hex_dump(&buffer);
+                        eprintln!("Printin rdb as HEX");
+                        print_hex::print_hex_dump(&buffer);
                         match read_rdb_file(path) {
                             Ok(rdb) => {
                                 eprintln!("Successful rdb read");

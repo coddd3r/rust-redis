@@ -38,3 +38,10 @@ pub fn print_hex_dump(data: &[u8]) {
         println!();
     }
 }
+
+pub fn print_hex(bytes: &[u8]) {
+    for byte in bytes {
+        print!("{:02x} ", byte);
+    }
+    println!();
+}

@@ -68,6 +68,8 @@ C2 87 D6 12 00
 C3 ...
 * */
 
+use crate::print_hex::print_hex;
+
 use super::error::{RdbError, Result};
 use std::io::{Read, Write};
 
@@ -143,10 +145,12 @@ pub fn write_size<W: Write>(writer: &mut W, size: usize) -> Result<()> {
 }
 
 pub fn read_string<R: Read>(reader: &mut R) -> Result<String> {
-    eprintln!("READING SIZE of a STRING");
     let size = read_size(reader)?;
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
+    eprintln!("READ SIZE of a STRING, {size}");
+    print!("STRING IN HEX:");
+    print_hex(&buf);
     String::from_utf8(buf).map_err(|_| RdbError::InvalidStringEncoding)
 }
 
