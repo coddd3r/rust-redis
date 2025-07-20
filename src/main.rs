@@ -154,6 +154,10 @@ fn handle_client(
                     _ => {}
                 }
             }
+            "save" => {
+                //TODO
+                todo!("NOT IMPLEMENTED SAVE TO RDB YET");
+            }
             _ => unreachable!(),
         }
     }
@@ -170,11 +174,15 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     let mut all_lines = Vec::new();
     let mut my_iter = BufReader::new(stream).lines();
 
-    //if next returns None then no more lines, break loop, free thread
+    /*
+     * if next returns None then no more lines, break loop, free thread
+     */
     let arr_length = my_iter.next()?;
 
-    //for each element we'll have 2 lines, one with the size and the other with the text
-    //so arr_length will ne provided num of elements * 2
+    /*
+    * for each element we'll have 2 lines, one with the size and the other with the text
+        so arr_length will ne provided num of elements * 2
+    */
     let arr_length = arr_length.unwrap()[1..].parse::<usize>().unwrap() * 2;
     for _ in 0..arr_length {
         all_lines.push(my_iter.next()?.unwrap());
