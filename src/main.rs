@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::time::Instant;
 use std::{env, usize};
 mod threadpool;
+use codecrafters_redis::print_hex::create_dummy_rdb;
 use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
 };
@@ -17,6 +18,7 @@ use threadpool::ThreadPool;
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
+    //create_dummy_rdb(path);
     let arg_list = std::env::args();
     eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
@@ -168,121 +170,116 @@ fn handle_client(
             }
 
             "keys" => {
-                if let Some(file) = &db_filename {
+                let path: PathBuf;
+                if db_filename.is_some() && dir.is_some() {
                     eprintln!("FOUND FILE");
-                    if let Some(directory) = &dir {
-                        eprintln!("FOUND DIR");
-                        // create a new file path
-                        // then write current hashmap to rdb
-                        let path = Path::new(directory);
-                        let path = path.join(file);
-                        eprintln!("USING PATH:{:?}", &path);
+                    let file = db_filename.as_ref().unwrap();
 
-                        let mut file = File::open(&path)?;
-                        let mut buffer = Vec::new();
-                        file.read_to_end(&mut buffer)?;
+                    let directory = dir.as_ref().unwrap();
+                    eprintln!("FOUND DIR");
+                    // create a new file path
+                    // then write current hashmap to rdb
+                    path = Path::new(directory).join(file);
+                } else {
+                    path = env::current_dir().unwrap().join("dump.rdb");
+                }
 
-                        eprintln!("Printin rdb as HEX");
-                        print_hex::print_hex_dump(&buffer);
-                        match read_rdb_file(path) {
-                            Ok(rdb) => {
-                                eprintln!("Successful rdb read");
-                                let mut ret_keys = Vec::new();
-                                //get by index
-                                if let Some(db) = rdb.databases.get(&0) {
-                                    eprintln!("GOT DB FROM RDB FILE {:?}", db);
-                                    match all_lines[3].as_str() {
-                                        "*" => {
-                                            eprintln!("GOT * search");
-                                            db.data.iter().for_each(|(k, _)| {
-                                                ret_keys.push(k);
-                                            });
-                                        }
-                                        others => {
-                                            let search_strings: Vec<&str> =
-                                                all_lines[3].split("*").collect();
+                eprintln!("USING PATH:{:?}", &path);
 
-                                            eprintln!(
-                                                "GOT OTHERS search:{others}, searching with {:?}",
-                                                search_strings
-                                            );
-                                            db.data.iter().for_each(|(k, _)| {
-                                                if search_strings.iter().all(|e| k.contains(e)) {
-                                                    ret_keys.push(k);
-                                                }
-                                            });
-                                        }
-                                    }
+                let mut file = File::open(&path)?;
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer)?;
 
-                                    eprintln!("All KEYS to return:{:?}", ret_keys);
-                                    //EXAMPLE: *1\r\n$3\r\nfoo\r\n
-                                    let _ = stream.write_all(
-                                        &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"]
-                                            .concat(),
-                                    );
-                                    ret_keys.iter().enumerate().for_each(|(_, e)| {
-                                        //let _ =
-                                        //    stream.write_all(&[i.to_string().as_bytes(), b") "].concat());
-                                        let _ = stream.write_all(&write_resp_array(e));
-                                    });
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("failed to read from rdb file {:?}", e);
-                            }
-                        }
-                    } else {
-                        eprintln!("FAILED TO FIND DIR");
+                eprintln!("Printin rdb as HEX");
+                print_hex::print_hex_dump(&buffer);
+                match read_rdb_file(path) {
+                    Ok(rdb) => {
+                        let ret_keys = read_rdb_keys(rdb, all_lines[3].clone());
+
+                        //EXAMPLE: *1\r\n$3\r\nfoo\r\n
+                        let _ = stream.write_all(
+                            &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"].concat(),
+                        );
+                        ret_keys.iter().enumerate().for_each(|(_, e)| {
+                            let _ = stream.write_all(&write_resp_array(e));
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("failed to read from rdb file {:?}", e);
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
-                } else {
-                    eprintln!("FAILED TO FIND FILE");
-                    stream.write_all(b"$-1\r\n").unwrap();
                 }
             }
             "save" => {
                 eprintln!("IN SAVE");
-                let usefile: &String;
-                let usedir: &String;
                 let mut path: PathBuf;
-                if let Some(file) = &db_filename {
-                    eprintln!("FILE:{file}");
-                    if let Some(directory) = &dir {
-                        // create a new file path
-                        // then write current hashmap to rdb
-                        usefile = file;
-                        usedir = directory;
-                        path = Path::new(&usedir).join(usefile);
-                    } else {
-                        path = env::current_dir().unwrap();
-                        path.push("dump.rdb");
-                    }
+                if db_filename.is_some() && dir.is_some() {
+                    // create a new file path then write current hashmap to rdb
+                    path = Path::new(dir.as_ref().unwrap()).join(db_filename.as_ref().unwrap());
+
+                    eprintln!("Path:{:?}", &path);
+                    let mut new_rdb = RdbFile {
+                        version: "0011".to_string(),
+                        metadata: HashMap::new(),
+                        databases: HashMap::new(),
+                    };
+
+                    new_rdb
+                        .metadata
+                        .insert("redis-version".to_string(), "6.0.16".to_string());
+                    eprintln!("IN Save, using map {:?}", new_db);
+                    new_rdb.databases.insert(0, new_db.clone());
+                    eprintln!("Creating a new rdb with {:?}", new_rdb);
+
+                    let _ = write_rdb_file(path, &new_rdb);
+
+                    eprintln!("after SAVE writing to file");
+                    stream.write_all(b"+OK\r\n")?;
                 } else {
+                    eprintln!("Creating DUMMY in curr dir");
                     path = env::current_dir().unwrap();
                     path.push("dump.rdb");
+                    create_dummy_rdb(&path)?;
+                    stream.write_all(b"+OK\r\n")?;
+                    // no need for data as it already mocked
                 }
-                eprintln!("Path:{:?}", &path);
-                let mut new_rdb = RdbFile {
-                    version: "0011".to_string(),
-                    metadata: HashMap::new(),
-                    databases: HashMap::new(),
-                };
-
-                new_rdb
-                    .metadata
-                    .insert("redis-version".to_string(), "6.0.16".to_string());
-                new_rdb.databases.insert(0, new_db.clone());
-                eprintln!("Creating a new rdb with {:?}", new_rdb);
-
-                let _ = write_rdb_file(path, &new_rdb);
-
-                eprintln!("after SAVE writing to file");
-                stream.write_all(b"+OK\r\n")?;
             }
             _ => unreachable!(),
         }
     }
     Ok(())
+}
+
+fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
+    eprintln!("Successful rdb read");
+    let mut ret_keys = Vec::new();
+    //get by index
+    if let Some(db) = rdb.databases.get(&0) {
+        eprintln!("GOT DB FROM RDB FILE {:?}", db);
+        match search_key.as_str() {
+            "*" => {
+                eprintln!("GOT * search");
+                db.data.clone().into_iter().for_each(|(k, _)| {
+                    ret_keys.push(k);
+                });
+            }
+            others => {
+                let search_strings: Vec<&str> = search_key.split("*").collect();
+
+                eprintln!(
+                    "GOT OTHERS search:{others}, searching with {:?}",
+                    search_strings
+                );
+                db.data.clone().into_iter().for_each(|(k, _)| {
+                    if search_strings.iter().all(|e| k.contains(e)) {
+                        ret_keys.push(k);
+                    }
+                });
+            }
+        }
+    }
+    eprintln!("All KEYS to return:{:?}", ret_keys);
+    ret_keys
 }
 
 fn write_resp_array(resp: &String) -> Vec<u8> {

@@ -75,11 +75,11 @@ use std::io::{Read, Write};
 
 /// Reads a size-encoded value from the stream
 pub fn read_size<R: Read>(reader: &mut R) -> Result<(usize, Option<Vec<u8>>)> {
-    eprintln!("reading first byte for SIZE");
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
     let first_byte = buf[0];
 
+    eprintln!("reading first byte for SIZE in hex {:#04X?}", buf[0]);
     //read first byte by right shifting by 6
     match first_byte >> 6 {
         /* If the first two bits are 0b00:
@@ -169,19 +169,13 @@ pub fn write_string<W: Write>(writer: &mut W, s: &str) -> Result<()> {
 }
 
 /// Reads a length-prefixed byte array
-pub fn read_bytes<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
-    eprintln!("READING SIZE of a byte array");
-    let size = read_size(reader)?.0;
-    let mut buf = vec![0u8; size];
-    reader.read_exact(&mut buf)?;
-    Ok(buf)
-}
-
-pub fn write_bytes<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
-    write_size(writer, bytes.len())?;
-    let _ = writer.write_all(bytes);
-    Ok(())
-}
+//pub fn read_bytes<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
+//    eprintln!("READING SIZE of a byte array");
+//    let size = read_size(reader)?.0;
+//    let mut buf = vec![0u8; size];
+//    reader.read_exact(&mut buf)?;
+//    Ok(buf)
+//}
 
 pub fn read_special_int<R: Read>(reader: &mut R, v: Option<Vec<u8>>) -> Result<String> {
     let mut buf = [0u8; 1];

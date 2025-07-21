@@ -13,7 +13,7 @@ Here's a more formal description of how each key-value pair is stored:
     Key (string encoded)
     Value (encoding depends on value type)
 * */
-use crate::encoding::{read_bytes, read_string, write_bytes, write_string};
+use crate::encoding::{read_string, write_string};
 use crate::error::{RdbError, Result};
 use crate::types::{Expiration, RedisDatabase, RedisValue};
 use std::io::{Read, Write};
@@ -26,7 +26,7 @@ pub const RESIZEDB: u8 = 0xFB;
 pub const EOF: u8 = 0xFF;
 pub const STRING_TYPE: u8 = 0x00;
 
-pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
+pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
     eprintln!("READING DB");
     let mut db = RedisDatabase::new();
 
@@ -34,14 +34,24 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
 
+    eprintln!("before dbsize check buf:{:#04X}", buf[0]);
     //if we're resizing, skip hash table sizes
     if buf[0] == RESIZEDB {
         eprintln!("IN RESIZE OPERATION, skipping bytes");
-        read_bytes(reader)?; // keys size
-        read_bytes(reader)?; // expires size
+        //let num_keys = read_bytes(reader)?; // keys size
+        reader.read_exact(&mut buf)?;
+        eprintln!("read db, numkeys in hex: {:#04X?}:", buf[0],);
+        reader.read_exact(&mut buf)?;
+        eprintln!(" numexpiry in hex {:#04X?}", buf[0]);
+        //let num_expiry = read_bytes(reader)?; // expires size
+        // eprintln!(
+        //     "read db, numkeys in hex: {:#04X?}, numexpiry in hex {:#04X?}",
+        //     num_keys, num_expiry
+        // );
         reader.read_exact(&mut buf)?;
     }
 
+    let mut reached_eof = false;
     loop {
         eprintln!("IN READ DB buf[0]: {:#04X?}", buf[0]);
         match buf[0] {
@@ -87,6 +97,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
             }
             /* Here, the flag is 0, which means "string without expiry" */
             STRING_TYPE => {
+                eprintln!("IN match string tpe no timeout");
                 let key = read_string(reader)?;
                 let value = read_string(reader)?;
 
@@ -99,7 +110,11 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
                     },
                 );
             }
-            EOF => break,
+            EOF => {
+                eprintln!("REACHED EOF");
+                reached_eof = true;
+                break;
+            }
             _ => return Err(RdbError::InvalidValueType(buf[0])),
         }
         // Read next byte to determine what comes next
@@ -112,7 +127,8 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<RedisDatabase> {
         }
     }
 
-    Ok(db)
+    eprintln!("AFTER DB LOOP");
+    Ok((db, reached_eof))
 }
 
 /// Write database to an RDB file
@@ -123,10 +139,20 @@ pub fn write_database<W: Write>(writer: &mut W, db_index: u8, db: &RedisDatabase
 
     // Write RESIZEDB info (we don't track sizes, so just write 0)
     writer.write_all(&[RESIZEDB])?;
-    write_bytes(writer, &[0])?; // keys size
-    write_bytes(writer, &[0])?; // expires size
+    let num_keys = db.data.len().to_string();
+    eprintln!("Writing to db with num keys:{num_keys}");
+    writer.write_all(num_keys.as_bytes())?;
+    let expires_len = db
+        .data
+        .iter()
+        .filter(|(_, v)| v.expires_at.is_some())
+        .count()
+        .to_string();
+    eprintln!("Writing to db with num_expiry:{expires_len}");
+    writer.write_all(expires_len.as_bytes())?;
 
     for (k, v) in &db.data {
+        eprintln!("in write key value for loop");
         // if there is an expiry time
         // write expiry
         if let Some(expiry) = &v.expires_at {

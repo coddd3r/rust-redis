@@ -33,7 +33,6 @@ pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
         if reader.read_exact(&mut buf).is_err() {
             break;
         }
-
         eprintln!("IN DB section loop curr val:{:#04X?}", buf[0]);
         match buf[0] {
             // if a db subsection is found
@@ -45,15 +44,25 @@ pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
                 let db_index = db_index_buf[0];
 
                 let db = database::read_db(reader)?;
-                all_databases.insert(db_index, db);
+                all_databases.insert(db_index, db.0);
+
+                //if reached_eof returns true
+                if db.1 {
+                    break;
+                };
             }
             database::DB_INDEX_0 => {
-                eprintln!("FOUND DB selector");
+                eprintln!("FOUND DB index 0 0x00");
                 //metadata consumes the FE, so we just start from index num
                 let db_index = buf[0];
 
                 let db = database::read_db(reader)?;
-                all_databases.insert(db_index, db);
+                all_databases.insert(db_index, db.0);
+
+                //if reached_eof returns true
+                if db.1 {
+                    break;
+                }
             }
 
             database::EOF => break,
