@@ -17,13 +17,12 @@ use codecrafters_redis::{
 use threadpool::ThreadPool;
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
-
     //create_dummy_rdb(path);
     let arg_list = std::env::args();
     //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
+    let mut port = None;
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
         if a.as_str() == "--dir" {
@@ -34,7 +33,17 @@ fn main() {
             db_filename = b.next();
             //eprintln!("GOT FILE");
         }
+        if a.as_str() == "--port" {
+            port = b.next()
+        }
     }
+
+    let mut full_port = String::from("127.0.0.1:");
+    if let Some(p) = port {
+        full_port.push_str(&p);
+    }
+    let listener = TcpListener::bind(&full_port).unwrap();
+    eprintln!("Listening on port:{full_port}");
 
     let stream_pool = ThreadPool::new(4);
     for stream in listener.incoming() {
@@ -85,7 +94,7 @@ fn handle_client(
                 }
                 //eprintln!("USING STORAGE DB: {:?}", new_db);
             }
-            Err(e) => {
+            Err(_e) => {
                 //eprintln!("failed to read from rdb file {:?}, USING NEWDB", e);
             }
         }
@@ -114,8 +123,13 @@ fn handle_client(
                 let v = all_lines[5].clone();
 
                 if all_lines.len() > 6 {
-                    let mut use_expiry = None;
-
+                    new_db.insert(
+                        k,
+                        RedisValue {
+                            value: v,
+                            expires_at: None,
+                        },
+                    );
                     match all_lines[7].to_lowercase().as_str() {
                         "px" => {
                             let time_arg: u64 = all_lines[9].parse()?;
@@ -125,7 +139,9 @@ fn handle_client(
                                 .as_millis() as u64; //eprintln!("got MILLISECONDS expiry:{time_arg}");
                             let end_time_s = now + time_arg;
                             //eprintln!("AT: {now}, MSexpiry:{time_arg},end:{end_time_s}");
-                            use_expiry = Some(Expiration::Milliseconds(end_time_s));
+                            let use_expiry = Some(Expiration::Milliseconds(end_time_s));
+                            let curr_val = new_db.data.get_mut(&all_lines[3]).unwrap();
+                            curr_val.expires_at = use_expiry;
                         }
                         "ex" => {
                             let time_arg: u32 = all_lines[9].parse()?;
@@ -136,7 +152,9 @@ fn handle_client(
                             let end_time_s = now as u32 + time_arg;
 
                             //eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
-                            use_expiry = Some(Expiration::Seconds(end_time_s as u32));
+                            let use_expiry = Some(Expiration::Seconds(end_time_s as u32));
+                            let curr_val = new_db.data.get_mut(&all_lines[3]).unwrap();
+                            curr_val.expires_at = use_expiry;
                         }
                         _ => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
@@ -145,13 +163,6 @@ fn handle_client(
                         }
                     }
                     //eprintln!("before inserting in db, expiry:{:?}", use_expiry);
-                    let _res = new_db.insert(
-                        k,
-                        RedisValue {
-                            value: v,
-                            expires_at: use_expiry,
-                        },
-                    );
                 } else {
                     new_db.insert(
                         k,
@@ -270,7 +281,7 @@ fn handle_client(
                             let _ = stream.write_all(&write_resp_array(e));
                         });
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         //eprintln!("failed to read from rdb file {:?}", e);
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
@@ -345,7 +356,7 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
                     ret_keys.push(k);
                 });
             }
-            others => {
+            _others => {
                 let search_strings: Vec<&str> = search_key.split("*").collect();
 
                 //eprintln!(
