@@ -321,6 +321,7 @@ fn handle_client(
                     // no need for data as it already mocked
                 }
             }
+            "info" => {}
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
                     "UNRECOGNIZED COMMAND",
