@@ -8,18 +8,24 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
-mod threadpool;
-use codecrafters_redis::print_hex::create_dummy_rdb;
+
 use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
 };
+use uuid::Uuid;
+mod threadpool;
 use threadpool::ThreadPool;
 
 fn main() {
     //create_dummy_rdb(path);
-    let mut info_fields: HashMap<&str, &str> = HashMap::new();
-    info_fields.insert("role", "master");
+    let mut id = Uuid::new_v4().to_string();
+    id.push_str("2025");
+    let mut info_fields: HashMap<&str, String> = HashMap::new();
+    info_fields.insert("role", "master".to_string());
+    info_fields.insert("master_replica_offset", "0".to_string());
+    eprintln!("ID:{:?}", (&id).len());
+    info_fields.insert("id", id);
 
     let arg_list = std::env::args();
     //eprintln!("ARGS:{:?}", &arg_list);
@@ -40,7 +46,7 @@ fn main() {
             "--port" => port = b.next(),
             "--replicaof" => {
                 let curr_role = info_fields.get_mut("role").unwrap();
-                *curr_role = "slave";
+                *curr_role = "slave".to_string();
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
                 }
@@ -94,7 +100,7 @@ fn handle_client(
     mut stream: TcpStream,
     dir: Option<String>,
     db_filename: Option<String>,
-    info_fields: &HashMap<&str, &str>,
+    info_fields: &HashMap<&str, String>,
 ) -> Result<(), Box<dyn Error>> {
     const RESP_OK: &[u8; 5] = b"+OK\r\n";
     const RESP_NULL: &[u8; 5] = b"$-1\r\n";
@@ -340,7 +346,7 @@ fn handle_client(
                     //eprintln!("Creating DUMMY in curr dir");
                     path = env::current_dir().unwrap();
                     path.push("dump.rdb");
-                    create_dummy_rdb(&path)?;
+                    print_hex::create_dummy_rdb(&path)?;
                     stream.write_all(RESP_OK)?;
                     // no need for data as it already mocked
                 }
@@ -348,13 +354,23 @@ fn handle_client(
             "info" => {
                 //if there is an extra key arg
                 if all_lines.len() > 5 {
-                    let mut info_key = all_lines[5].clone();
-
+                    let info_key = &all_lines[5];
+                    let mut use_resp = String::new();
                     match info_key.to_lowercase().as_str() {
-                        "role" => info_key.push_str(":master"),
+                        "role" => {
+                            use_resp.push_str("role:");
+                            use_resp.push_str(info_fields.get("role").unwrap());
+                        }
+                        "replication" => {
+                            let fields = ["role", "master_replid", "master_repl_offset"];
+                            fields.iter().for_each(|elem| {
+                                use_resp.push_str(elem);
+                                use_resp.push_str(info_fields.get(elem).unwrap());
+                            });
+                        }
                         _ => {}
                     }
-                    stream.write_all(&get_bulk_string(&info_key))?;
+                    stream.write_all(&get_bulk_string(&use_resp))?;
                 } else {
                     for (k, v) in info_fields.iter() {
                         let mut use_val = k.to_string();
