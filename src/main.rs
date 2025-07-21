@@ -64,9 +64,30 @@ fn handle_client(
     dir: Option<String>,
     db_filename: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    //let mut fake_db: HashMap<String, (String, Option<Instant>)> = HashMap::new();
-
     let mut new_db = RedisDatabase::new();
+    //if file exists use the first db in the indexing, else use a new db
+    if db_filename.is_some() && dir.is_some() {
+        let file = db_filename.as_ref().unwrap();
+
+        let directory = dir.as_ref().unwrap();
+        eprintln!("FOUND DIR");
+        // create a new file path
+        let path = Path::new(directory).join(file);
+        match read_rdb_file(path) {
+            Ok(rdb) => {
+                eprintln!("RDB FILE {:?}", rdb);
+                let opt_db = rdb.databases.get(&0u8);
+                if let Some(storage_db) = opt_db {
+                    eprintln!("storage db:{:?}", storage_db);
+                    new_db = storage_db.clone();
+                }
+                eprintln!("USING STORAGE DB: {:?}", new_db);
+            }
+            Err(e) => {
+                eprintln!("failed to read from rdb file {:?}, USING NEWDB", e);
+            }
+        }
+    }
     loop {
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
@@ -145,21 +166,14 @@ fn handle_client(
             "get" => {
                 eprintln!("IN GET");
                 let get_key = &all_lines[3];
+
                 if let Some(res) = new_db.get(&get_key) {
                     if res.expires_at.is_none()
                         || (res.expires_at.is_some()
                             && !res.expires_at.as_ref().unwrap().is_expired())
                     {
                         eprintln!("in get TIME STILL");
-                        let res_size = res.value.len();
-                        let resp = [
-                            b"$",
-                            res_size.to_string().as_bytes(),
-                            b"\r\n",
-                            res.value.as_bytes(),
-                            b"\r\n",
-                        ]
-                        .concat();
+                        let resp = respond_to_get(res);
                         stream.write_all(&resp).unwrap();
                     } else {
                         eprintln!("db: {:?}", new_db);
@@ -300,6 +314,18 @@ fn handle_client(
         }
     }
     Ok(())
+}
+
+fn respond_to_get(res: &RedisValue) -> Vec<u8> {
+    let res_size = res.value.len();
+    [
+        b"$",
+        res_size.to_string().as_bytes(),
+        b"\r\n",
+        res.value.as_bytes(),
+        b"\r\n",
+    ]
+    .concat()
 }
 
 fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
