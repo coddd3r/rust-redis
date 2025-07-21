@@ -42,7 +42,7 @@ const ROLE: &str = "role";
 const MASTER: &str = "master";
 const SLAVE: &str = "slave";
 const MASTER_REPL_OFFSET: &str = "master_repl_offset";
-const MASTER_REPL_ID: &str = "master_repl_id";
+const MASTER_REPL_ID: &str = "master_replid";
 
 fn main() {
     let mut id = Uuid::new_v4().to_string();
@@ -166,7 +166,7 @@ fn handle_client(
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
         };
-        //eprintln!("ALL LINES:{:?}", all_lines);
+        eprintln!("ALL LINES:{:?}", all_lines);
 
         let cmd = &all_lines[1];
 
@@ -386,6 +386,7 @@ fn handle_client(
             }
             "info" => {
                 //if there is an extra key arg
+                eprintln!("IN INFO SECTION");
                 if all_lines.len() > 5 {
                     let info_key = &all_lines[5];
                     let mut use_resp = String::new();
@@ -403,15 +404,24 @@ fn handle_client(
                         }
                         _ => {}
                     }
+                    eprintln!("INFO RESPONSE:{:?}", use_resp);
                     stream.write_all(&get_bulk_string(&use_resp))?;
                 } else {
+                    eprintln!("IN INFO ELSE");
+                    let mut info_res: Vec<u8> = Vec::new();
+                    let mut use_val = String::new();
                     for (k, v) in info_fields.iter() {
-                        let mut use_val = k.to_string();
+                        eprintln!("IN For fields, k:{k}, v:{v}",);
+                        use_val.push_str(k);
                         use_val.push_str(":");
                         use_val.push_str(v);
-                        stream.write_all(&get_bulk_string(&use_val))?;
+                        use_val.push_str("\r\n");
                     }
+                    info_res = get_bulk_string(&use_val[..use_val.len() - 2]);
+                    eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
+                    stream.write_all(&info_res)?;
                 }
+                eprintln!("AFTER INFO SECTION");
             }
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
@@ -423,7 +433,7 @@ fn handle_client(
     Ok(())
 }
 
-fn get_bulk_string(res: &String) -> Vec<u8> {
+fn get_bulk_string(res: &str) -> Vec<u8> {
     let res_size = res.len();
     [
         b"$",
