@@ -110,7 +110,7 @@ fn handle_client(
                 if let Some(res) = new_db.get(&all_lines[3]) {
                     if res.expires_at.is_none()
                         || (res.expires_at.is_some()
-                            && res.expires_at.as_ref().unwrap().is_expired())
+                            && !res.expires_at.as_ref().unwrap().is_expired())
                     {
                         eprintln!("in get TIME STILL");
                         let res_size = res.value.len();
