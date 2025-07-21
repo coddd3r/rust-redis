@@ -5,8 +5,8 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use std::time::Instant;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
 mod threadpool;
 use codecrafters_redis::print_hex::create_dummy_rdb;
@@ -92,14 +92,23 @@ fn handle_client(
 
                 if all_lines.len() > 6 {
                     let mut use_expiry = None;
+
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
                     match all_lines[7].to_lowercase().as_str() {
                         "px" => {
                             eprintln!("got MILLISECONDS expiry");
-                            use_expiry = Some(Expiration::Milliseconds(all_lines[9].parse()?));
+                            let time_arg: u64 = all_lines[9].parse()?;
+                            let end_time_s = now + (time_arg / 1000);
+                            use_expiry = Some(Expiration::Seconds(end_time_s as u32));
                         }
                         "ex" => {
                             eprintln!("got SECONDS expiry");
-                            use_expiry = Some(Expiration::Seconds(all_lines[9].parse()?));
+                            let time_arg: u32 = all_lines[9].parse()?;
+                            let end_time_s = now as u32 + time_arg;
+                            use_expiry = Some(Expiration::Seconds(end_time_s as u32));
                         }
                         _ => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
@@ -107,6 +116,7 @@ fn handle_client(
                             )))
                         }
                     }
+                    eprintln!("before inserting in db, expiry:{:?}", use_expiry);
                     let _res = new_db.insert(
                         k,
                         RedisValue {
@@ -279,7 +289,11 @@ fn handle_client(
                     // no need for data as it already mocked
                 }
             }
-            _ => unreachable!(),
+            _unrecognized_cmd => {
+                return Err(Box::new(RdbError::UnsupportedFeature(
+                    "UNRECOGNIZED COMMAND",
+                )))
+            }
         }
     }
     Ok(())
