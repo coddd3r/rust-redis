@@ -22,15 +22,37 @@ impl Expiration {
     }
 
     pub fn is_expired(&self) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        eprintln!(
-            "NOW: {now},checking expiry, seconds:{:?}",
-            self.as_seconds()
-        );
-        self.as_seconds() <= now
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        match self {
+            Expiration::Seconds(secs) => {
+                let expiry = std::time::Duration::from_secs(*secs as u64);
+                now >= expiry
+            }
+            Expiration::Milliseconds(ms) => {
+                let expiry = std::time::Duration::from_millis(*ms);
+                now >= expiry
+            }
+        }
+    }
+
+    pub fn is_expiring_soon(&self, threshold_ms: u64) -> bool {
+        let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(n) => n,
+            Err(_) => return true,
+        };
+
+        match self {
+            Expiration::Seconds(secs) => {
+                let expiry = std::time::Duration::from_secs(*secs as u64);
+                let remaining = expiry.saturating_sub(now);
+                remaining.as_millis() <= threshold_ms as u128
+            }
+            Expiration::Milliseconds(ms) => {
+                let expiry = std::time::Duration::from_millis(*ms);
+                let remaining = expiry.saturating_sub(now);
+                remaining.as_millis() <= threshold_ms as u128
+            }
+        }
     }
 }
 
