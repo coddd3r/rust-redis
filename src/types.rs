@@ -30,7 +30,7 @@ impl Expiration {
             "NOW: {now},checking expiry, seconds:{:?}",
             self.as_seconds()
         );
-        self.as_seconds() < now
+        self.as_seconds() <= now
     }
 }
 
