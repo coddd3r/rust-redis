@@ -13,19 +13,44 @@ use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
 };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 mod threadpool;
 use threadpool::ThreadPool;
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Role {
+    Master(String),
+    Slave(String),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ReplicationValues {
+    Role(Role),
+    MasterRelpOffset(usize),
+    MasterReplid(String),
+}
+
+//struct InfoFieldS {
+//    role: Role,
+//    master_repl_offset: usize,
+//    master_repl_id: String,
+//}
+
+const ROLE: &str = "role";
+const MASTER: &str = "master";
+const SLAVE: &str = "slave";
+const MASTER_REPL_OFFSET: &str = "master_repl_offset";
+const MASTER_REPL_ID: &str = "master_repl_id";
 
 fn main() {
-    //create_dummy_rdb(path);
     let mut id = Uuid::new_v4().to_string();
     id.push_str("2025");
     let mut info_fields: HashMap<&str, String> = HashMap::new();
-    info_fields.insert("role", "master".to_string());
-    info_fields.insert("master_replica_offset", "0".to_string());
+    info_fields.insert(ROLE, MASTER.to_string());
     eprintln!("ID:{:?}", (&id).len());
-    info_fields.insert("id", id);
+    //info_fields.insert("id", id);
 
     let arg_list = std::env::args();
     //eprintln!("ARGS:{:?}", &arg_list);
@@ -41,12 +66,12 @@ fn main() {
             }
             "--dbfilename" => {
                 db_filename = b.next();
-                //eprintln!("GOT FILE");
+                //eprintln!("GOT ILE");
             }
             "--port" => port = b.next(),
             "--replicaof" => {
-                let curr_role = info_fields.get_mut("role").unwrap();
-                *curr_role = "slave".to_string();
+                let curr_role = info_fields.get_mut(ROLE).unwrap();
+                *curr_role = SLAVE.to_string();
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
                 }
@@ -56,6 +81,14 @@ fn main() {
                 */
             }
             _ => {}
+        }
+    }
+
+    let rl = info_fields.get(ROLE);
+    if let Some(r) = rl {
+        if r == MASTER {
+            info_fields.insert(MASTER_REPL_ID, id.clone());
+            info_fields.insert(MASTER_REPL_OFFSET, "0".to_string());
         }
     }
 
@@ -111,12 +144,12 @@ fn handle_client(
         let file = db_filename.as_ref().unwrap();
 
         let directory = dir.as_ref().unwrap();
-        //eprintln!("FOUND DIR");
+        //eprintln!("OUND DIR");
         // create a new file path
         let path = Path::new(directory).join(file);
         match read_rdb_file(path) {
             Ok(rdb) => {
-                //eprintln!("RDB FILE {:?}", rdb);
+                //eprintln!("RDB ILE {:?}", rdb);
                 let opt_db = rdb.databases.get(&0u8);
                 if let Some(storage_db) = opt_db {
                     //eprintln!("storage db:{:?}", storage_db);
@@ -231,13 +264,13 @@ fn handle_client(
                         stream.write_all(RESP_NULL).unwrap();
                     }
                 } else {
-                    //eprintln!("IN GET FOUND NOTHING");
+                    //eprintln!("IN GET OUND NOTHING");
                     stream.write_all(RESP_NULL).unwrap();
                 }
             }
 
             /*
-             *CONFIG
+             *CONIG
              * */
             "config" => {
                 let config_command = all_lines[3].to_lowercase();
@@ -279,11 +312,11 @@ fn handle_client(
             "keys" => {
                 let path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
-                    //eprintln!("FOUND FILE");
+                    //eprintln!("OUND FILE");
                     let file = db_filename.as_ref().unwrap();
 
                     let directory = dir.as_ref().unwrap();
-                    //eprintln!("FOUND DIR");
+                    //eprintln!("OUND DIR");
                     // create a new file path
                     // then write current hashmap to rdb
                     path = Path::new(directory).join(file);
@@ -357,12 +390,12 @@ fn handle_client(
                     let info_key = &all_lines[5];
                     let mut use_resp = String::new();
                     match info_key.to_lowercase().as_str() {
-                        "role" => {
+                        ROLE => {
                             use_resp.push_str("role:");
-                            use_resp.push_str(info_fields.get("role").unwrap());
+                            use_resp.push_str(info_fields.get(ROLE).unwrap());
                         }
                         "replication" => {
-                            let fields = ["role", "master_replid", "master_repl_offset"];
+                            let fields = [ROLE, MASTER_REPL_ID, MASTER_REPL_OFFSET];
                             fields.iter().for_each(|elem| {
                                 use_resp.push_str(elem);
                                 use_resp.push_str(info_fields.get(elem).unwrap());
@@ -408,7 +441,7 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     //get by index
     // TODO! instead of hardcoding, find the latest key, i.e largest num
     if let Some(db) = rdb.databases.get(&0) {
-        //eprintln!("GOT DB FROM RDB FILE {:?}", db);
+        //eprintln!("GOT DB ROM RDB FILE {:?}", db);
         match search_key.as_str() {
             "*" => {
                 //eprintln!("GOT * search");
