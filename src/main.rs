@@ -41,7 +41,11 @@ fn main() {
     let mut full_port = String::from("127.0.0.1:");
     if let Some(p) = port {
         full_port.push_str(&p);
+    } else {
+        full_port.push_str("6379");
     }
+
+    eprintln!("Binding to port:{full_port}");
     let listener = TcpListener::bind(&full_port).unwrap();
     eprintln!("Listening on port:{full_port}");
 
@@ -75,6 +79,9 @@ fn handle_client(
     dir: Option<String>,
     db_filename: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
+    const RESP_OK: &[u8; 5] = b"+OK\r\n";
+    const RESP_NULL: &[u8; 5] = b"$-1\r\n";
+
     let mut new_db = RedisDatabase::new();
     //if file exists use the first db in the indexing, else use a new db
     if db_filename.is_some() && dir.is_some() {
@@ -172,7 +179,7 @@ fn handle_client(
                         },
                     );
                 }
-                stream.write_all(b"+OK\r\n").unwrap();
+                stream.write_all(RESP_OK).unwrap();
             }
 
             /*
@@ -188,7 +195,7 @@ fn handle_client(
                             && !res.expires_at.as_ref().unwrap().is_expired())
                     {
                         //eprintln!("in get TIME STILL");
-                        let resp = respond_to_get(res);
+                        let resp = get_bulk_string(&res.value);
                         stream.write_all(&resp).unwrap();
                     } else {
                         //eprintln!("db: {:?}", new_db);
@@ -198,11 +205,11 @@ fn handle_client(
                         // );
                         //eprintln!("in get TIME OVER, removing expired key, {}", get_key);
                         new_db.data.remove(get_key);
-                        stream.write_all(b"$-1\r\n").unwrap();
+                        stream.write_all(RESP_NULL).unwrap();
                     }
                 } else {
                     //eprintln!("IN GET FOUND NOTHING");
-                    stream.write_all(b"$-1\r\n").unwrap();
+                    stream.write_all(RESP_NULL).unwrap();
                 }
             }
 
@@ -278,12 +285,12 @@ fn handle_client(
                             &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"].concat(),
                         );
                         ret_keys.iter().enumerate().for_each(|(_, e)| {
-                            let _ = stream.write_all(&write_resp_array(e));
+                            let _ = stream.write_all(&get_bulk_string(e));
                         });
                     }
                     Err(_e) => {
                         //eprintln!("failed to read from rdb file {:?}", e);
-                        stream.write_all(b"$-1\r\n").unwrap();
+                        stream.write_all(RESP_NULL).unwrap();
                     }
                 }
             }
@@ -311,17 +318,37 @@ fn handle_client(
                     let _ = write_rdb_file(path, &new_rdb);
 
                     //eprintln!("after SAVE writing to file");
-                    stream.write_all(b"+OK\r\n")?;
+                    stream.write_all(RESP_OK)?;
                 } else {
                     //eprintln!("Creating DUMMY in curr dir");
                     path = env::current_dir().unwrap();
                     path.push("dump.rdb");
                     create_dummy_rdb(&path)?;
-                    stream.write_all(b"+OK\r\n")?;
+                    stream.write_all(RESP_OK)?;
                     // no need for data as it already mocked
                 }
             }
-            "info" => {}
+            "info" => {
+                let mut info_fields: HashMap<&str, &str> = HashMap::new();
+                info_fields.insert("role", "master");
+                //if there is an extra key arg
+                if all_lines.len() > 5 {
+                    let mut info_key = all_lines[5].clone();
+
+                    match info_key.to_lowercase().as_str() {
+                        "role" => info_key.push_str(":master"),
+                        _ => {}
+                    }
+                    stream.write_all(&get_bulk_string(&info_key))?;
+                } else {
+                    for (k, v) in info_fields.iter() {
+                        let mut use_val = k.to_string();
+                        use_val.push_str(":");
+                        use_val.push_str(v);
+                        stream.write_all(&get_bulk_string(&use_val))?;
+                    }
+                }
+            }
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
                     "UNRECOGNIZED COMMAND",
@@ -332,13 +359,13 @@ fn handle_client(
     Ok(())
 }
 
-fn respond_to_get(res: &RedisValue) -> Vec<u8> {
-    let res_size = res.value.len();
+fn get_bulk_string(res: &String) -> Vec<u8> {
+    let res_size = res.len();
     [
         b"$",
         res_size.to_string().as_bytes(),
         b"\r\n",
-        res.value.as_bytes(),
+        res.as_bytes(),
         b"\r\n",
     ]
     .concat()
@@ -348,6 +375,7 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     //eprintln!("Successful rdb read");
     let mut ret_keys = Vec::new();
     //get by index
+    // TODO! instead of hardcoding, find the latest key, i.e largest num
     if let Some(db) = rdb.databases.get(&0) {
         //eprintln!("GOT DB FROM RDB FILE {:?}", db);
         match search_key.as_str() {
@@ -376,16 +404,6 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     ret_keys
 }
 
-fn write_resp_array(resp: &String) -> Vec<u8> {
-    [
-        b"$",
-        resp.len().to_string().as_bytes(),
-        b"\r\n",
-        resp.as_bytes(),
-        b"\r\n",
-    ]
-    .concat()
-}
 /**
 *
 *   https://redis.io/docs/latest/develop/reference/protocol-spec/#bulk-strings
@@ -397,7 +415,7 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     let mut my_iter = BufReader::new(stream).lines();
 
     /*
-     * if next returns None then no more lines, break loop, free thread
+     * if next returns None then no more lines
      */
     let arr_length = my_iter.next()?;
 
