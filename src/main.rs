@@ -18,6 +18,9 @@ use threadpool::ThreadPool;
 
 fn main() {
     //create_dummy_rdb(path);
+    let mut info_fields: HashMap<&str, &str> = HashMap::new();
+    info_fields.insert("role", "master");
+
     let arg_list = std::env::args();
     //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
@@ -25,16 +28,28 @@ fn main() {
     let mut port = None;
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
-        if a.as_str() == "--dir" {
-            dir = b.next();
-            //eprintln!("GOT DIR");
-        }
-        if a.as_str() == "--dbfilename" {
-            db_filename = b.next();
-            //eprintln!("GOT FILE");
-        }
-        if a.as_str() == "--port" {
-            port = b.next()
+        match a.as_str() {
+            "--dir" => {
+                dir = b.next();
+                //eprintln!("GOT DIR");
+            }
+            "--dbfilename" => {
+                db_filename = b.next();
+                //eprintln!("GOT FILE");
+            }
+            "--port" => port = b.next(),
+            "--replicaof" => {
+                let curr_role = info_fields.get_mut("role").unwrap();
+                *curr_role = "slave";
+                if let Some(master) = b.next() {
+                    eprintln!("is replica of:{master}");
+                }
+                /*
+                master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+                master_repl_offset:0
+                */
+            }
+            _ => {}
         }
     }
 
@@ -56,8 +71,9 @@ fn main() {
                 println!("accepted new connection");
                 let dir_arg = dir.clone();
                 let db_arg = db_filename.clone();
+                let info_fields = info_fields.clone();
                 stream_pool.execute(move || {
-                    let res = handle_client(_stream, dir_arg, db_arg);
+                    let res = handle_client(_stream, dir_arg, db_arg, &info_fields);
                     match res {
                         Ok(_) => (),
                         Err(e) => {
@@ -78,6 +94,7 @@ fn handle_client(
     mut stream: TcpStream,
     dir: Option<String>,
     db_filename: Option<String>,
+    info_fields: &HashMap<&str, &str>,
 ) -> Result<(), Box<dyn Error>> {
     const RESP_OK: &[u8; 5] = b"+OK\r\n";
     const RESP_NULL: &[u8; 5] = b"$-1\r\n";
@@ -329,8 +346,6 @@ fn handle_client(
                 }
             }
             "info" => {
-                let mut info_fields: HashMap<&str, &str> = HashMap::new();
-                info_fields.insert("role", "master");
                 //if there is an extra key arg
                 if all_lines.len() > 5 {
                     let mut info_key = all_lines[5].clone();
