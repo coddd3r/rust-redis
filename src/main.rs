@@ -13,30 +13,10 @@ use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+
+use uuid::Uuid; //generate gossip events susign a thread
 mod threadpool;
 use threadpool::ThreadPool;
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum Role {
-    Master(String),
-    Slave(String),
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ReplicationValues {
-    Role(Role),
-    MasterRelpOffset(usize),
-    MasterReplid(String),
-}
-
-//struct InfoFieldS {
-//    role: Role,
-//    master_repl_offset: usize,
-//    master_repl_id: String,
-//}
 
 const ROLE: &str = "role";
 const MASTER: &str = "master";
@@ -74,6 +54,17 @@ fn main() {
                 *curr_role = SLAVE.to_string();
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
+                    let master_port: Vec<_> = master.split_whitespace().collect();
+                    let mut send_to = String::from(master_port[0]);
+                    send_to.push_str(":");
+                    send_to.push_str(master_port[1]);
+                    match TcpStream::connect(send_to) {
+                        Ok(mut conn) => {
+                            let buf = b"*1\r\n$4\r\nPING\r\n";
+                            conn.write_all(buf).expect("FAILED TO PING master");
+                        }
+                        Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
+                    }
                 }
                 /*
                 master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
@@ -417,6 +408,7 @@ fn handle_client(
                         use_val.push_str(v);
                         use_val.push_str("\r\n");
                     }
+                    // remove the last CRLF
                     info_res = get_bulk_string(&use_val[..use_val.len() - 2]);
                     eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
                     stream.write_all(&info_res)?;
@@ -444,6 +436,8 @@ fn get_bulk_string(res: &str) -> Vec<u8> {
     ]
     .concat()
 }
+
+//fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
 
 fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     //eprintln!("Successful rdb read");
