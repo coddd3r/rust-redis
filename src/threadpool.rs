@@ -14,12 +14,12 @@ impl Worker {
             let msg = receiver.lock().unwrap().recv();
             match msg {
                 Ok(job) => {
-                    println!("Worker {id} got a job; executing.");
+                    eprintln!("Worker {id} got a job; executing.");
 
                     job();
                 }
                 Err(_) => {
-                    println!("Worker {id} disconnected; shutting down.");
+                    eprintln!("Worker {id} disconnected; shutting down.");
                     break;
                 }
             }
@@ -78,7 +78,7 @@ impl Drop for ThreadPool {
         drop(self.sender.take());
 
         for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
+            eprintln!("Shutting down worker {}", worker.id);
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
             }

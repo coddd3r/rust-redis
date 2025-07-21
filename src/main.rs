@@ -21,18 +21,18 @@ fn main() {
 
     //create_dummy_rdb(path);
     let arg_list = std::env::args();
-    eprintln!("ARGS:{:?}", &arg_list);
+    //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
         if a.as_str() == "--dir" {
             dir = b.next();
-            eprintln!("GOT DIR");
+            //eprintln!("GOT DIR");
         }
         if a.as_str() == "--dbfilename" {
             db_filename = b.next();
-            eprintln!("GOT FILE");
+            //eprintln!("GOT FILE");
         }
     }
 
@@ -47,7 +47,9 @@ fn main() {
                     let res = handle_client(_stream, dir_arg, db_arg);
                     match res {
                         Ok(_) => (),
-                        Err(e) => eprintln!("Error handling client {}", e),
+                        Err(e) => {
+                            eprintln!("Error handling client {}", e);
+                        }
                     }
                 });
             }
@@ -70,21 +72,21 @@ fn handle_client(
         let file = db_filename.as_ref().unwrap();
 
         let directory = dir.as_ref().unwrap();
-        eprintln!("FOUND DIR");
+        //eprintln!("FOUND DIR");
         // create a new file path
         let path = Path::new(directory).join(file);
         match read_rdb_file(path) {
             Ok(rdb) => {
-                eprintln!("RDB FILE {:?}", rdb);
+                //eprintln!("RDB FILE {:?}", rdb);
                 let opt_db = rdb.databases.get(&0u8);
                 if let Some(storage_db) = opt_db {
-                    eprintln!("storage db:{:?}", storage_db);
+                    //eprintln!("storage db:{:?}", storage_db);
                     new_db = storage_db.clone();
                 }
-                eprintln!("USING STORAGE DB: {:?}", new_db);
+                //eprintln!("USING STORAGE DB: {:?}", new_db);
             }
             Err(e) => {
-                eprintln!("failed to read from rdb file {:?}, USING NEWDB", e);
+                //eprintln!("failed to read from rdb file {:?}, USING NEWDB", e);
             }
         }
     }
@@ -92,7 +94,7 @@ fn handle_client(
         let Some(all_lines) = decode_bulk_string(&stream) else {
             break;
         };
-        eprintln!("ALL LINES:{:?}", all_lines);
+        //eprintln!("ALL LINES:{:?}", all_lines);
 
         let cmd = &all_lines[1];
 
@@ -114,24 +116,26 @@ fn handle_client(
                 if all_lines.len() > 6 {
                     let mut use_expiry = None;
 
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs();
                     match all_lines[7].to_lowercase().as_str() {
                         "px" => {
                             let time_arg: u64 = all_lines[9].parse()?;
-                            eprintln!("got MILLISECONDS expiry:{time_arg}");
-                            let end_time_s = now + (time_arg / 1000);
-                            eprintln!(
-                                "AT: {now},got MILLISECONDS expiry:{time_arg}, expected end:{end_time_s}"
-                            );
-                            use_expiry = Some(Expiration::Seconds(end_time_s as u32));
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64; //eprintln!("got MILLISECONDS expiry:{time_arg}");
+                            let end_time_s = now + time_arg;
+                            //eprintln!("AT: {now}, MSexpiry:{time_arg},end:{end_time_s}");
+                            use_expiry = Some(Expiration::Milliseconds(end_time_s));
                         }
                         "ex" => {
                             let time_arg: u32 = all_lines[9].parse()?;
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs();
                             let end_time_s = now as u32 + time_arg;
-                            eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
+
+                            //eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
                             use_expiry = Some(Expiration::Seconds(end_time_s as u32));
                         }
                         _ => {
@@ -140,7 +144,7 @@ fn handle_client(
                             )))
                         }
                     }
-                    eprintln!("before inserting in db, expiry:{:?}", use_expiry);
+                    //eprintln!("before inserting in db, expiry:{:?}", use_expiry);
                     let _res = new_db.insert(
                         k,
                         RedisValue {
@@ -164,7 +168,7 @@ fn handle_client(
              * GET SECTION
              * */
             "get" => {
-                eprintln!("IN GET");
+                //eprintln!("IN GET");
                 let get_key = &all_lines[3];
 
                 if let Some(res) = new_db.get(&get_key) {
@@ -172,21 +176,21 @@ fn handle_client(
                         || (res.expires_at.is_some()
                             && !res.expires_at.as_ref().unwrap().is_expired())
                     {
-                        eprintln!("in get TIME STILL");
+                        //eprintln!("in get TIME STILL");
                         let resp = respond_to_get(res);
                         stream.write_all(&resp).unwrap();
                     } else {
-                        eprintln!("db: {:?}", new_db);
-                        eprintln!(
-                            "expired: {:?}",
-                            res.expires_at.as_ref().unwrap().is_expired()
-                        );
-                        eprintln!("in get TIME OVER, removing expired key, {}", get_key);
+                        //eprintln!("db: {:?}", new_db);
+                        // eprintln!(
+                        //     "expired: {:?}",
+                        //     res.expires_at.as_ref().unwrap().is_expired()
+                        // );
+                        //eprintln!("in get TIME OVER, removing expired key, {}", get_key);
                         new_db.data.remove(get_key);
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
                 } else {
-                    eprintln!("IN GET FOUND NOTHING");
+                    //eprintln!("IN GET FOUND NOTHING");
                     stream.write_all(b"$-1\r\n").unwrap();
                 }
             }
@@ -234,11 +238,11 @@ fn handle_client(
             "keys" => {
                 let path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
-                    eprintln!("FOUND FILE");
+                    //eprintln!("FOUND FILE");
                     let file = db_filename.as_ref().unwrap();
 
                     let directory = dir.as_ref().unwrap();
-                    eprintln!("FOUND DIR");
+                    //eprintln!("FOUND DIR");
                     // create a new file path
                     // then write current hashmap to rdb
                     path = Path::new(directory).join(file);
@@ -246,13 +250,13 @@ fn handle_client(
                     path = env::current_dir().unwrap().join("dump.rdb");
                 }
 
-                eprintln!("USING PATH:{:?}", &path);
+                //eprintln!("USING PATH:{:?}", &path);
 
                 let mut file = File::open(&path)?;
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer)?;
 
-                eprintln!("Printin rdb as HEX");
+                //eprintln!("Printin rdb as HEX");
                 print_hex::print_hex_dump(&buffer);
                 match read_rdb_file(path) {
                     Ok(rdb) => {
@@ -267,19 +271,19 @@ fn handle_client(
                         });
                     }
                     Err(e) => {
-                        eprintln!("failed to read from rdb file {:?}", e);
+                        //eprintln!("failed to read from rdb file {:?}", e);
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
                 }
             }
             "save" => {
-                eprintln!("IN SAVE");
+                //eprintln!("IN SAVE");
                 let mut path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
                     // create a new file path then write current hashmap to rdb
                     path = Path::new(dir.as_ref().unwrap()).join(db_filename.as_ref().unwrap());
 
-                    eprintln!("Path:{:?}", &path);
+                    //eprintln!("Path:{:?}", &path);
                     let mut new_rdb = RdbFile {
                         version: "0011".to_string(),
                         metadata: HashMap::new(),
@@ -289,16 +293,16 @@ fn handle_client(
                     new_rdb
                         .metadata
                         .insert("redis-version".to_string(), "6.0.16".to_string());
-                    eprintln!("IN Save, using map {:?}", new_db);
+                    //eprintln!("IN Save, using map {:?}", new_db);
                     new_rdb.databases.insert(0, new_db.clone());
-                    eprintln!("Creating a new rdb with {:?}", new_rdb);
+                    //eprintln!("Creating a new rdb with {:?}", new_rdb);
 
                     let _ = write_rdb_file(path, &new_rdb);
 
-                    eprintln!("after SAVE writing to file");
+                    //eprintln!("after SAVE writing to file");
                     stream.write_all(b"+OK\r\n")?;
                 } else {
-                    eprintln!("Creating DUMMY in curr dir");
+                    //eprintln!("Creating DUMMY in curr dir");
                     path = env::current_dir().unwrap();
                     path.push("dump.rdb");
                     create_dummy_rdb(&path)?;
@@ -329,14 +333,14 @@ fn respond_to_get(res: &RedisValue) -> Vec<u8> {
 }
 
 fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
-    eprintln!("Successful rdb read");
+    //eprintln!("Successful rdb read");
     let mut ret_keys = Vec::new();
     //get by index
     if let Some(db) = rdb.databases.get(&0) {
-        eprintln!("GOT DB FROM RDB FILE {:?}", db);
+        //eprintln!("GOT DB FROM RDB FILE {:?}", db);
         match search_key.as_str() {
             "*" => {
-                eprintln!("GOT * search");
+                //eprintln!("GOT * search");
                 db.data.clone().into_iter().for_each(|(k, _)| {
                     ret_keys.push(k);
                 });
@@ -344,10 +348,10 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
             others => {
                 let search_strings: Vec<&str> = search_key.split("*").collect();
 
-                eprintln!(
-                    "GOT OTHERS search:{others}, searching with {:?}",
-                    search_strings
-                );
+                //eprintln!(
+                //      "GOT OTHERS search:{others}, searching with {:?}",
+                //      search_strings
+                //  );
                 db.data.clone().into_iter().for_each(|(k, _)| {
                     if search_strings.iter().all(|e| k.contains(e)) {
                         ret_keys.push(k);
@@ -356,7 +360,7 @@ fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
             }
         }
     }
-    eprintln!("All KEYS to return:{:?}", ret_keys);
+    //eprintln!("All KEYS to return:{:?}", ret_keys);
     ret_keys
 }
 
