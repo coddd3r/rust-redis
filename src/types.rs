@@ -26,7 +26,10 @@ impl Expiration {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        eprintln!("checking expiry, seconds:{:?}", self.as_seconds());
+        eprintln!(
+            "NOW: {now},checking expiry, seconds:{:?}",
+            self.as_seconds()
+        );
         self.as_seconds() < now
     }
 }

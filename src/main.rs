@@ -99,15 +99,18 @@ fn handle_client(
                         .as_secs();
                     match all_lines[7].to_lowercase().as_str() {
                         "px" => {
-                            eprintln!("got MILLISECONDS expiry");
                             let time_arg: u64 = all_lines[9].parse()?;
+                            eprintln!("got MILLISECONDS expiry:{time_arg}");
                             let end_time_s = now + (time_arg / 1000);
+                            eprintln!(
+                                "AT: {now},got MILLISECONDS expiry:{time_arg}, expected end:{end_time_s}"
+                            );
                             use_expiry = Some(Expiration::Seconds(end_time_s as u32));
                         }
                         "ex" => {
-                            eprintln!("got SECONDS expiry");
                             let time_arg: u32 = all_lines[9].parse()?;
                             let end_time_s = now as u32 + time_arg;
+                            eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
                             use_expiry = Some(Expiration::Seconds(end_time_s as u32));
                         }
                         _ => {
