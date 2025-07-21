@@ -11,7 +11,8 @@ use std::{env, usize};
 mod threadpool;
 use codecrafters_redis::print_hex::create_dummy_rdb;
 use codecrafters_redis::{
-    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbFile, RedisDatabase, RedisValue,
+    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
+    RedisValue,
 };
 use threadpool::ThreadPool;
 
@@ -82,16 +83,35 @@ fn handle_client(
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
                 stream.write_all(&resp).unwrap();
             }
+            /*
+             * SET SECTION
+             * */
             "set" => {
                 let k = all_lines[3].clone();
                 let v = all_lines[5].clone();
 
-                if all_lines.len() > 6 && all_lines[7].to_lowercase() == "px" {
+                if all_lines.len() > 6 {
+                    let mut use_expiry = None;
+                    match all_lines[7].to_lowercase().as_str() {
+                        "px" => {
+                            eprintln!("got MILLISECONDS expiry");
+                            use_expiry = Some(Expiration::Milliseconds(all_lines[9].parse()?));
+                        }
+                        "ex" => {
+                            eprintln!("got SECONDS expiry");
+                            use_expiry = Some(Expiration::Seconds(all_lines[9].parse()?));
+                        }
+                        _ => {
+                            return Err(Box::new(RdbError::UnsupportedFeature(
+                                "WRONG SET ARGUMENTS",
+                            )))
+                        }
+                    }
                     let _res = new_db.insert(
                         k,
                         RedisValue {
                             value: v,
-                            expires_at: Some(Expiration::Seconds(all_lines[9].parse()?)),
+                            expires_at: use_expiry,
                         },
                     );
                 } else {
@@ -105,9 +125,14 @@ fn handle_client(
                 }
                 stream.write_all(b"+OK\r\n").unwrap();
             }
+
+            /*
+             * GET SECTION
+             * */
             "get" => {
                 eprintln!("IN GET");
-                if let Some(res) = new_db.get(&all_lines[3]) {
+                let get_key = &all_lines[3];
+                if let Some(res) = new_db.get(&get_key) {
                     if res.expires_at.is_none()
                         || (res.expires_at.is_some()
                             && !res.expires_at.as_ref().unwrap().is_expired())
@@ -124,7 +149,13 @@ fn handle_client(
                         .concat();
                         stream.write_all(&resp).unwrap();
                     } else {
-                        eprintln!("in get TIME OVER");
+                        eprintln!("db: {:?}", new_db);
+                        eprintln!(
+                            "expired: {:?}",
+                            res.expires_at.as_ref().unwrap().is_expired()
+                        );
+                        eprintln!("in get TIME OVER, removing expired key, {}", get_key);
+                        new_db.data.remove(get_key);
                         stream.write_all(b"$-1\r\n").unwrap();
                     }
                 } else {
@@ -132,6 +163,10 @@ fn handle_client(
                     stream.write_all(b"$-1\r\n").unwrap();
                 }
             }
+
+            /*
+             *CONFIG
+             * */
             "config" => {
                 let config_command = all_lines[3].to_lowercase();
                 let config_field = all_lines[5].to_lowercase();

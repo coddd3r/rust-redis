@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt;
 use std::io;
 
@@ -11,7 +12,7 @@ pub enum RdbError {
     InvalidStringEncoding,
     InvalidValueType(u8),
     ChecksumMismatch,
-    UnsupportedFeater(&'static str),
+    UnsupportedFeature(&'static str),
 }
 
 impl fmt::Display for RdbError {
@@ -25,10 +26,12 @@ impl fmt::Display for RdbError {
             RdbError::InvalidStringEncoding => write!(f, "Invalid string encoding"),
             RdbError::InvalidValueType(t) => write!(f, "Invalid value type: {}", t),
             RdbError::ChecksumMismatch => write!(f, "Checksum mismatch"),
-            RdbError::UnsupportedFeater(feat) => write!(f, "Unsupported feature: {}", feat),
+            RdbError::UnsupportedFeature(feat) => write!(f, "Unsupported feature: {}", feat),
         }
     }
 }
+
+impl Error for RdbError {}
 
 impl From<io::Error> for RdbError {
     fn from(err: io::Error) -> Self {
