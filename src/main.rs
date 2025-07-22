@@ -16,6 +16,8 @@ use codecrafters_redis::{
 
 mod threadpool;
 use threadpool::ThreadPool;
+
+use crate::utils::get_bulk_string;
 mod utils;
 
 const ROLE: &str = "role";
@@ -315,37 +317,39 @@ fn handle_client(
             "config" => {
                 let config_command = all_lines[3].to_lowercase();
                 let config_field = all_lines[5].to_lowercase();
+
+                fn config_response(field_type: &str, field_name: &str) -> Vec<u8> {
+                    let mut resp: Vec<u8> = Vec::new();
+                    resp.extend_from_slice(b"*2\r\n");
+                    resp.extend(get_bulk_string(field_type));
+                    resp.extend(get_bulk_string(field_name));
+                    resp
+                }
                 match config_command.as_str() {
                     "get" => match config_field.as_str() {
                         "dir" => {
-                            let dir_name = dir.as_ref().unwrap();
-                            let dir_name_length = dir_name.len().to_string();
-                            let resp = [
-                                b"*2\r\n$3\r\ndir\r\n$",
-                                dir_name_length.as_bytes(),
-                                b"\r\n",
-                                dir_name.as_bytes(),
-                                b"\r\n",
-                            ]
-                            .concat();
-                            stream.write_all(&resp).unwrap();
+                            if let Some(dir_name) = &dir {
+                                let resp = config_response(&config_field, dir_name);
+                                stream.write_all(&resp).unwrap();
+                            } else {
+                                stream.write_all(RESP_NULL)?;
+                            }
                         }
                         "dbfilename" => {
-                            let db_name = db_filename.as_ref().unwrap();
-                            let db_name_length = db_name.len().to_string();
-                            let resp = [
-                                b"*2\r\n$3\r\ndir\r\n$",
-                                db_name_length.as_bytes(),
-                                b"\r\n",
-                                db_name.as_bytes(),
-                                b"\r\n",
-                            ]
-                            .concat();
-                            stream.write_all(&resp).unwrap();
+                            if let Some(db_name) = &db_filename {
+                                let resp = config_response(&config_field, db_name);
+                                stream.write_all(&resp).unwrap();
+                            } else {
+                                stream.write_all(RESP_NULL)?;
+                            }
                         }
-                        _ => unreachable!(),
+                        _ => {
+                            eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+                        }
                     },
-                    _ => {}
+                    _ => {
+                        eprintln!("UNRECOGNIZED CONFIG COMMAND")
+                    }
                 }
             }
 
