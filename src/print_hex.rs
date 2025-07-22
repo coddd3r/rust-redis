@@ -57,18 +57,18 @@ pub fn create_dummy_rdb(path: &Path) -> Result<()> {
     file.write_all(b"REDIS0011")?;
 
     // 2. Metadata section
-    // redis-bits comes FIRST (length 10)
-    file.write_all(&[0xFA])?;
-    file.write_all(&[0x0A])?; // Length 10
-    file.write_all(b"redis-bits")?;
-    file.write_all(&[0xC0, 0x40])?; // 8-bit encoded 64
-
-    // redis-ver comes SECOND (length 9)
+    // redis-ver comes first (length 9)
     file.write_all(&[0xFA])?;
     file.write_all(&[0x09])?; // Length 9
     file.write_all(b"redis-ver")?;
     file.write_all(&[0x05])?; // Length 5
     file.write_all(b"7.2.0")?;
+
+    // redis-bits comes second (length 10)
+    file.write_all(&[0xFA])?;
+    file.write_all(&[0x0A])?; // Length 10
+    file.write_all(b"redis-bits")?;
+    file.write_all(&[0xC0, 0x40])?; // 8-bit encoded 64
 
     // 3. Database section
     file.write_all(&[0xFE, 0x00])?; // DB selector (db 0)

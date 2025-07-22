@@ -96,45 +96,48 @@ fn main() {
 
                             let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
                             conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
-
                             let _ = read_response(&conn, 4);
+
                             let mut first_line = String::new();
                             let mut bulk_reader = BufReader::new(conn);
                             bulk_reader.read_line(&mut first_line).unwrap();
                             if first_line.is_empty() {
                                 eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
+                            } else {
+                                for x in first_line.chars() {
+                                    eprintln!("digit?, {x}");
+                                }
+                                let rdb_len = first_line.trim()[1..]
+                                    .parse::<usize>()
+                                    .expect("failed to parse rdb length");
+                                let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+                                eprintln!(
+                                    "writing to vec with capacity:{:?}",
+                                    received_rdb.capacity()
+                                );
+                                bulk_reader
+                                    .read_exact(&mut received_rdb)
+                                    //.read_until(0xFF, &mut received_rdb)
+                                    .expect("FAILED TO READ RDB BYTES");
+
+                                //eprintln!("read from stream num bytes:{num_bytes_read}");
+                                eprintln!(
+                                    "read from stream num rdb file:{:?}, length:{:?}",
+                                    received_rdb,
+                                    received_rdb.len()
+                                );
+
+                                let received_rdb_path =
+                                    std::env::current_dir().unwrap().join("dumpreceived.rdb");
+
+                                let mut file = File::create(&received_rdb_path).unwrap();
+                                file.write_all(&received_rdb)
+                                    .expect("failed to write receive rdb to file");
+                                eprintln!("WRPTE RESPONSE TO FILE");
+                                let rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+                                    .expect("failed tp read response rdb from file");
+                                eprintln!("RDB:{:?}", rdb);
                             }
-
-                            for x in first_line.chars() {
-                                eprintln!("digit?, {x}");
-                            }
-                            let rdb_len = first_line.trim()[1..]
-                                .parse::<usize>()
-                                .expect("failed to parse rdb length");
-                            let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
-                            eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
-                            bulk_reader
-                                .read_exact(&mut received_rdb)
-                                //.read_until(0xFF, &mut received_rdb)
-                                .expect("FAILED TO READ RDB BYTES");
-
-                            //eprintln!("read from stream num bytes:{num_bytes_read}");
-                            eprintln!(
-                                "read from stream num rdb file:{:?}, length:{:?}",
-                                received_rdb,
-                                received_rdb.len()
-                            );
-
-                            let received_rdb_path =
-                                std::env::current_dir().unwrap().join("dumpreceived.rdb");
-
-                            let mut file = File::create(&received_rdb_path).unwrap();
-                            file.write_all(&received_rdb)
-                                .expect("failed to write receive rdb to file");
-                            eprintln!("WRPTE RESPONSE TO FILE");
-                            let rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
-                                .expect("failed tp read response rdb from file");
-                            eprintln!("RDB:{:?}", rdb);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
