@@ -3,6 +3,9 @@ use rand::Rng;
 use std::io::{prelude::*, BufReader};
 use std::net::TcpStream;
 
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
+
 pub fn get_bulk_string(res: &str) -> Vec<u8> {
     //fn get_bulk_string(res: &str) -> &[u8] {
     let res_size = res.len();
@@ -78,26 +81,70 @@ pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
 **/
 pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     let mut all_lines = Vec::new();
-    let mut my_iter = BufReader::new(stream).lines();
+    let mut bulk_reader = BufReader::new(stream);
+    let mut first_line = String::new();
+    bulk_reader.read_line(&mut first_line).unwrap();
+    if first_line.is_empty() {
+        eprintln!("EMPTY LINE");
+        return None;
+    }
+    if first_line.chars().nth(0).unwrap() != '*' {
+        eprintln!("FOUND LENGTH RESPONSE:{first_line}");
 
-    /*
-     * if next returns None then no more lines
-     */
-    let arr_length = my_iter.next()?;
+        let rdb_len = first_line
+            .trim()
+            .parse::<usize>()
+            .expect("failed to paese rdb length");
+        let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+        eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
+        bulk_reader
+            .read_exact(&mut received_rdb)
+            //.read_until(0xFF, &mut received_rdb)
+            .expect("FAILED TO READ RDB BYTES");
 
-    /*
-    * for each element we'll have 2 lines, one with the size and the other with the text
-        so arr_length will ne provided num of elements * 2
-    */
-    let arr_length = &arr_length.expect("failed to unwrap arr length line from buf")[1..]
-        .parse::<usize>()
-        .expect("failed to get bulk string element num from stream");
+        //eprintln!("read from stream num bytes:{num_bytes_read}");
+        eprintln!(
+            "read from stream num rdb file:{:?}, length:{:?}",
+            received_rdb,
+            received_rdb.len()
+        );
 
-    let n = arr_length * 2;
-    for _ in 0..n {
-        all_lines.push(my_iter.next()?.unwrap());
+        let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
+
+        let mut file = File::create(&received_rdb_path).unwrap();
+        file.write_all(&received_rdb)
+            .expect("failed to write receive rdb to file");
+        eprintln!("WRPTE RESPONSE TO FILE");
+        let rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+            .expect("failed tp read response rdb from file");
+        eprintln!("RDB:{:?}", rdb);
+        eprintln!("final all lines{:?}", all_lines);
+    } else {
+        eprintln!("initial array length{first_line}");
+        let mut my_iter = bulk_reader.lines().peekable();
+
+        /*
+         * if next returns None then no more lines
+         */
+        let arr_length = my_iter.next()?;
+
+        /*
+        * for each element we'll have 2 lines, one with the size and the other with the text
+            so arr_length will ne provided num of elements * 2
+        */
+        let arr_length = &arr_length.expect("failed to unwrap arr length line from buf")[1..]
+            .parse::<usize>()
+            .expect("failed to get bulk string element num from stream");
+
+        let n = arr_length * 2;
+        eprintln!("GOT SIZE:{n}");
+
+        for _ in 0..1 {
+            all_lines.push(my_iter.next()?.unwrap());
+        }
     }
     Some(all_lines)
+    //eprintln!("after push, peek:{:?}", my_iter.peek())
 }
 
 //fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}

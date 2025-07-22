@@ -1,7 +1,8 @@
 #![allow(unused_imports)]
+use std::char::decode_utf16;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -9,6 +10,7 @@ use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
 
+use codecrafters_redis::print_hex::create_dummy_rdb;
 use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
@@ -70,6 +72,15 @@ fn main() {
             "--replicaof" => {
                 let curr_role = info_fields.get_mut(ROLE).unwrap();
                 *curr_role = SLAVE.to_string();
+
+                fn read_response(st: &TcpStream, n: usize) -> String {
+                    let mut buf_reader = BufReader::new(st.try_clone().unwrap());
+                    let mut use_buf = String::new();
+                    let _ = buf_reader.read_line(&mut use_buf);
+
+                    eprintln!("{n}th handshake done, response:{}", use_buf);
+                    use_buf
+                }
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
                     let master_port: Vec<_> = master.split_whitespace().collect();
@@ -81,40 +92,45 @@ fn main() {
                             let buf = b"*1\r\n$4\r\nPING\r\n";
                             conn.write_all(buf).expect("FAILED TO PING master");
                             //confirm listening on to main node
-                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
-                            let mut use_buf = String::new();
-                            let _ = buf_reader.read_line(&mut use_buf);
-                            eprintln!("First handshake done, response:{}", use_buf);
-
+                            let _ = read_response(&conn, 1);
                             let repl_port =
                                 utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
 
                             conn.write_all(&repl_port)
                                 .expect("FAILED TO REPLCONF master");
-                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
-                            let mut use_buf = String::new();
-                            let _ = buf_reader.read_line(&mut use_buf);
-                            eprintln!("Second handshake done, response:{}", use_buf);
+                            let _ = read_response(&conn, 2);
 
                             let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
 
                             conn.write_all(&repl_capa)
                                 .expect("FAILED TO REPLCONF master");
+                            let master_response = read_response(&conn, 3);
 
-                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
-                            let mut use_buf = String::new();
-                            let _ = buf_reader.read_line(&mut use_buf);
-                            eprintln!("Third handshake done, response:{}", use_buf);
-
-                            if use_buf == String::from_utf8_lossy(RESP_OK) {
+                            if master_response == String::from_utf8_lossy(RESP_OK) {
                                 let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
                                 conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
 
-                                let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
-                                let mut use_buf = String::new();
-                                eprintln!("reading waiting for 4 response");
-                                let _ = buf_reader.read_line(&mut use_buf);
-                                eprintln!("Fourth handshake done, response:{}", use_buf);
+                                let _ = read_response(&conn, 4);
+                                // create dummy rdb for response
+                                let dummy_rdb_path =
+                                    env::current_dir().unwrap().join("dump-dummy.rdb");
+                                create_dummy_rdb(&dummy_rdb_path.as_path())
+                                    .expect("FAILED TO MAKE DUMMY RDB");
+
+                                if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
+                                    eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                                    conn.write_all(
+                                        &[
+                                            response_rdb_bytes.len().to_string().as_bytes(),
+                                            b"\r\n",
+                                            &response_rdb_bytes,
+                                        ]
+                                        .concat(),
+                                    )
+                                    .expect("FAILED TO WRITE SIZE LINE");
+
+                                    let _ = read_response(&conn, 5);
+                                };
                             } else {
                                 eprintln!("GOT UNEXPECTED RESPONSE TO PSYNC")
                             }
@@ -122,10 +138,6 @@ fn main() {
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
                 }
-                /*
-                master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-                master_repl_offset:0
-                */
             }
             _ => {}
         }
@@ -136,13 +148,15 @@ fn main() {
         if r == MASTER {
             info_fields.insert(MASTER_REPL_ID, id.clone());
             info_fields.insert(MASTER_REPL_OFFSET, "0".to_string());
+        } else {
+            info_fields.insert("repl_id", id.clone());
         }
     }
 
     if !port_found {
         full_port.push_str("6379");
     }
-    eprintln!("Binding to port:{full_port}");
+
     let listener = TcpListener::bind(&full_port).unwrap();
     eprintln!("Listening on port:{full_port}");
 
@@ -182,39 +196,36 @@ fn handle_client(
     //if file exists use the first db in the indexing, else use a new db
     if db_filename.is_some() && dir.is_some() {
         let file = db_filename.as_ref().unwrap();
-
         let directory = dir.as_ref().unwrap();
-        //eprintln!("OUND DIR");
-        // create a new file path
         let path = Path::new(directory).join(file);
+
         match read_rdb_file(path) {
             Ok(rdb) => {
-                //eprintln!("RDB ILE {:?}", rdb);
                 let opt_db = rdb.databases.get(&0u8);
                 if let Some(storage_db) = opt_db {
-                    //eprintln!("storage db:{:?}", storage_db);
                     new_db = storage_db.clone();
                 }
-                //eprintln!("USING STORAGE DB: {:?}", new_db);
             }
-            Err(_e) => {
-                //eprintln!("failed to read from rdb file {:?}, USING NEWDB", e);
-            }
+            Err(_e) => {}
         }
     }
+
     loop {
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
+        if all_lines.len() <= 1 {
+            eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+            stream.write_all(RESP_OK).unwrap();
+            continue;
+        }
         eprintln!("ALL LINES:{:?}", all_lines);
 
         let cmd = &all_lines[1];
 
         match cmd.to_lowercase().as_str() {
             "ping" => {
-                eprintln!("IN PING");
                 stream.write_all(b"+PONG\r\n").unwrap();
-                eprintln!("AFTER PING");
             }
             "echo" => {
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
