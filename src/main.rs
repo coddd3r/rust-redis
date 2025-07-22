@@ -120,12 +120,14 @@ fn main() {
                                             b"$",
                                             response_rdb_bytes.len().to_string().as_bytes(),
                                             b"\r\n",
-                                            &response_rdb_bytes,
                                         ]
                                         .concat(),
                                     )
                                     .expect("FAILED TO WRITE SIZE LINE");
 
+                                    conn.write_all(&response_rdb_bytes).expect(
+                                        "failed to write rdb bytes in response to hadnshake",
+                                    );
                                     let _ = read_response(&conn, 5);
                                 };
                             } else {
