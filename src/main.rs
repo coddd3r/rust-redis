@@ -25,7 +25,11 @@ const MASTER_REPL_OFFSET: &str = "master_repl_offset";
 const MASTER_REPL_ID: &str = "master_replid";
 const REPL_CONF: &str = "REPLCONF";
 const LISTENING_PORT: &str = "listening-port";
+const PSYNC: &str = "PSYNC";
+const FULLRESYNC: &str = "FULLRESYNC";
 
+const RESP_OK: &[u8; 5] = b"+OK\r\n";
+const RESP_NULL: &[u8; 5] = b"$-1\r\n";
 fn get_repl_bytes(first: &str, second: &str, third: &str) -> Vec<u8> {
     [
         b"*3\r\n",
@@ -76,9 +80,8 @@ fn main() {
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
                     let master_port: Vec<_> = master.split_whitespace().collect();
-                    let mut send_to = String::from(master_port[0]);
-                    send_to.push_str(":");
-                    send_to.push_str(master_port[1]);
+                    let send_to: String =
+                        [master_port[0], ":", master_port[1]].into_iter().collect();
                     eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(mut conn) => {
@@ -88,7 +91,7 @@ fn main() {
                             let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
                             let mut use_buf = String::new();
                             let _ = buf_reader.read_line(&mut use_buf);
-                            eprintln!("First handshake done, response:{:?}", use_buf);
+                            eprintln!("First handshake done, response:{}", use_buf);
 
                             let repl_port = get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
 
@@ -108,6 +111,17 @@ fn main() {
                             let mut use_buf = String::new();
                             let _ = buf_reader.read_line(&mut use_buf);
                             eprintln!("Third handshake done, response:{}", use_buf);
+
+                            if use_buf == String::from_utf8_lossy(RESP_OK) {
+                                //TODO
+                                let pysnc_resp = get_repl_bytes(PSYNC, "?", "-1");
+                                conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
+                            }
+                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
+                            let mut use_buf = String::new();
+                            eprintln!("reading waiting for 4 response");
+                            let _ = buf_reader.read_line(&mut use_buf);
+                            eprintln!("Fourth handshake done, response:{}", use_buf);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -168,9 +182,6 @@ fn handle_client(
     db_filename: Option<String>,
     info_fields: &HashMap<&str, String>,
 ) -> Result<(), Box<dyn Error>> {
-    const RESP_OK: &[u8; 5] = b"+OK\r\n";
-    const RESP_NULL: &[u8; 5] = b"$-1\r\n";
-
     let mut new_db = RedisDatabase::new();
     //if file exists use the first db in the indexing, else use a new db
     if db_filename.is_some() && dir.is_some() {
@@ -460,11 +471,20 @@ fn handle_client(
                 eprintln!("AFTER INFO SECTION");
             }
             "replconf" => {
-                match stream.write_all(RESP_OK) {
-                    Ok(_) => {}
-                    Err(e) => eprintln!("ERROR IN RESPLCONF{:?}", e),
-                };
+                stream.write_all(RESP_OK)?;
                 eprintln!("WROTE ok to replconf");
+            }
+            "psync" => {
+                let resync_response = [
+                    b"+",
+                    FULLRESYNC.as_bytes(),
+                    b" ",
+                    info_fields.get(MASTER_REPL_ID).unwrap().as_bytes(),
+                    b" 0",
+                    b"\r\n",
+                ]
+                .concat();
+                stream.write_all(&resync_response)?;
             }
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
@@ -474,6 +494,15 @@ fn handle_client(
         }
     }
     Ok(())
+}
+
+fn get_simple_string(v: Vec<&str>) -> Vec<&[u8]> {
+    let input_strings: Vec<&[u8]> = v.iter().map(|e| e.as_bytes()).collect();
+    let mut x: Vec<&[u8]> = Vec::new();
+    x.push("+".as_bytes());
+    x.extend(input_strings);
+    x.push("\r\n".as_bytes());
+    x
 }
 
 fn get_bulk_string(res: &str) -> Vec<u8> {
