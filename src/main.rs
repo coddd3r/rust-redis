@@ -95,15 +95,11 @@ fn main() {
                             let _ = read_response(&conn, 1);
                             let repl_port =
                                 utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
-
-                            conn.write_all(&repl_port)
-                                .expect("FAILED TO REPLCONF master");
+                            conn.write_all(&repl_port).expect("FAILED to reply master");
                             let _ = read_response(&conn, 2);
 
                             let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
-
-                            conn.write_all(&repl_capa)
-                                .expect("FAILED TO REPLCONF master");
+                            conn.write_all(&repl_capa).expect("FAILED TO reply master");
                             let master_response = read_response(&conn, 3);
 
                             if master_response == String::from_utf8_lossy(RESP_OK) {
@@ -121,6 +117,7 @@ fn main() {
                                     eprintln!("writing rdb len {}", response_rdb_bytes.len());
                                     conn.write_all(
                                         &[
+                                            b"$",
                                             response_rdb_bytes.len().to_string().as_bytes(),
                                             b"\r\n",
                                             &response_rdb_bytes,
