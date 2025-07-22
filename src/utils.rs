@@ -141,6 +141,14 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     Some(all_lines)
 }
 
+pub fn read_response(st: &TcpStream, n: usize) -> String {
+    let mut buf_reader = BufReader::new(st.try_clone().unwrap());
+    let mut use_buf = String::new();
+    let _ = buf_reader.read_line(&mut use_buf);
+
+    eprintln!("{n}th handshake done, response:{}", use_buf);
+    use_buf
+}
 //fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()

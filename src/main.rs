@@ -19,7 +19,7 @@ use codecrafters_redis::{
 mod threadpool;
 use threadpool::ThreadPool;
 
-use crate::utils::get_bulk_string;
+use crate::utils::{get_bulk_string, read_response};
 mod utils;
 
 const ROLE: &str = "role";
@@ -73,14 +73,6 @@ fn main() {
                 let curr_role = info_fields.get_mut(ROLE).unwrap();
                 *curr_role = SLAVE.to_string();
 
-                fn read_response(st: &TcpStream, n: usize) -> String {
-                    let mut buf_reader = BufReader::new(st.try_clone().unwrap());
-                    let mut use_buf = String::new();
-                    let _ = buf_reader.read_line(&mut use_buf);
-
-                    eprintln!("{n}th handshake done, response:{}", use_buf);
-                    use_buf
-                }
                 if let Some(master) = b.next() {
                     eprintln!("is replica of:{master}");
                     let master_port: Vec<_> = master.split_whitespace().collect();
@@ -100,39 +92,49 @@ fn main() {
 
                             let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
                             conn.write_all(&repl_capa).expect("FAILED TO reply master");
-                            let master_response = read_response(&conn, 3);
+                            let _ = read_response(&conn, 3);
 
-                            if master_response == String::from_utf8_lossy(RESP_OK) {
-                                let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
-                                conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
+                            let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
+                            conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
 
-                                let _ = read_response(&conn, 4);
-                                // create dummy rdb for response
-                                let dummy_rdb_path =
-                                    env::current_dir().unwrap().join("dump-dummy.rdb");
-                                create_dummy_rdb(&dummy_rdb_path.as_path())
-                                    .expect("FAILED TO MAKE DUMMY RDB");
-
-                                if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
-                                    eprintln!("writing rdb len {}", response_rdb_bytes.len());
-                                    conn.write_all(
-                                        &[
-                                            b"$",
-                                            response_rdb_bytes.len().to_string().as_bytes(),
-                                            b"\r\n",
-                                        ]
-                                        .concat(),
-                                    )
-                                    .expect("FAILED TO WRITE SIZE LINE");
-
-                                    conn.write_all(&response_rdb_bytes).expect(
-                                        "failed to write rdb bytes in response to hadnshake",
-                                    );
-                                    let _ = read_response(&conn, 5);
-                                };
-                            } else {
-                                eprintln!("GOT UNEXPECTED RESPONSE TO PSYNC")
+                            let _ = read_response(&conn, 4);
+                            let mut first_line = String::new();
+                            let mut bulk_reader = BufReader::new(conn);
+                            bulk_reader.read_line(&mut first_line).unwrap();
+                            if first_line.is_empty() {
+                                eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
                             }
+
+                            for x in first_line.chars() {
+                                eprintln!("digit?, {x}");
+                            }
+                            let rdb_len = first_line.trim()[1..]
+                                .parse::<usize>()
+                                .expect("failed to parse rdb length");
+                            let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+                            eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
+                            bulk_reader
+                                .read_exact(&mut received_rdb)
+                                //.read_until(0xFF, &mut received_rdb)
+                                .expect("FAILED TO READ RDB BYTES");
+
+                            //eprintln!("read from stream num bytes:{num_bytes_read}");
+                            eprintln!(
+                                "read from stream num rdb file:{:?}, length:{:?}",
+                                received_rdb,
+                                received_rdb.len()
+                            );
+
+                            let received_rdb_path =
+                                std::env::current_dir().unwrap().join("dumpreceived.rdb");
+
+                            let mut file = File::create(&received_rdb_path).unwrap();
+                            file.write_all(&received_rdb)
+                                .expect("failed to write receive rdb to file");
+                            eprintln!("WRPTE RESPONSE TO FILE");
+                            let rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+                                .expect("failed tp read response rdb from file");
+                            eprintln!("RDB:{:?}", rdb);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -489,6 +491,26 @@ fn handle_client(
                 ]
                 .concat();
                 stream.write_all(&resync_response)?;
+
+                let dummy_rdb_path = env::current_dir().unwrap().join("dump-dummy.rdb");
+                create_dummy_rdb(&dummy_rdb_path.as_path()).expect("FAILED TO MAKE DUMMY RDB");
+                if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
+                    eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                    stream
+                        .write_all(
+                            &[
+                                b"$",
+                                response_rdb_bytes.len().to_string().as_bytes(),
+                                b"\r\n",
+                            ]
+                            .concat(),
+                        )
+                        .expect("FAILED TO WRITE SIZE LINE");
+
+                    stream
+                        .write_all(&response_rdb_bytes)
+                        .expect("failed to write rdb bytes in response to hadnshake");
+                };
             }
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
