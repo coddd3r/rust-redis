@@ -14,9 +14,9 @@ use codecrafters_redis::{
     RedisValue,
 };
 
-use uuid::Uuid; //generate gossip events susign a thread
 mod threadpool;
 use threadpool::ThreadPool;
+mod utils;
 
 const ROLE: &str = "role";
 const MASTER: &str = "master";
@@ -30,21 +30,12 @@ const FULLRESYNC: &str = "FULLRESYNC";
 
 const RESP_OK: &[u8; 5] = b"+OK\r\n";
 const RESP_NULL: &[u8; 5] = b"$-1\r\n";
-fn get_repl_bytes(first: &str, second: &str, third: &str) -> Vec<u8> {
-    [
-        b"*3\r\n",
-        get_bulk_string(first).as_slice(),
-        get_bulk_string(second).as_slice(),
-        get_bulk_string(third).as_slice(),
-    ]
-    .concat()
-}
+
 fn main() {
-    let mut id = Uuid::new_v4().to_string();
-    id.push_str("2025");
+    let id = utils::random_id_gen();
     let mut info_fields: HashMap<&str, String> = HashMap::new();
     info_fields.insert(ROLE, MASTER.to_string());
-    eprintln!("ID:{:?}", (&id).len());
+    eprintln!("ID:{:?}", id);
     //info_fields.insert("id", id);
 
     let arg_list = std::env::args();
@@ -93,7 +84,8 @@ fn main() {
                             let _ = buf_reader.read_line(&mut use_buf);
                             eprintln!("First handshake done, response:{}", use_buf);
 
-                            let repl_port = get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
+                            let repl_port =
+                                utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
 
                             conn.write_all(&repl_port)
                                 .expect("FAILED TO REPLCONF master");
@@ -102,7 +94,7 @@ fn main() {
                             let _ = buf_reader.read_line(&mut use_buf);
                             eprintln!("Second handshake done, response:{}", use_buf);
 
-                            let repl_capa = get_repl_bytes(REPL_CONF, "capa", "psync2");
+                            let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
 
                             conn.write_all(&repl_capa)
                                 .expect("FAILED TO REPLCONF master");
@@ -113,15 +105,17 @@ fn main() {
                             eprintln!("Third handshake done, response:{}", use_buf);
 
                             if use_buf == String::from_utf8_lossy(RESP_OK) {
-                                //TODO
-                                let pysnc_resp = get_repl_bytes(PSYNC, "?", "-1");
+                                let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
                                 conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
+
+                                let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
+                                let mut use_buf = String::new();
+                                eprintln!("reading waiting for 4 response");
+                                let _ = buf_reader.read_line(&mut use_buf);
+                                eprintln!("Fourth handshake done, response:{}", use_buf);
+                            } else {
+                                eprintln!("GOT UNEXPECTED RESPONSE TO PSYNC")
                             }
-                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
-                            let mut use_buf = String::new();
-                            eprintln!("reading waiting for 4 response");
-                            let _ = buf_reader.read_line(&mut use_buf);
-                            eprintln!("Fourth handshake done, response:{}", use_buf);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -207,7 +201,7 @@ fn handle_client(
         }
     }
     loop {
-        let Some(all_lines) = decode_bulk_string(&stream) else {
+        let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
         eprintln!("ALL LINES:{:?}", all_lines);
@@ -297,7 +291,7 @@ fn handle_client(
                             && !res.expires_at.as_ref().unwrap().is_expired())
                     {
                         //eprintln!("in get TIME STILL");
-                        let resp = get_bulk_string(&res.value);
+                        let resp = utils::get_bulk_string(&res.value);
                         stream.write_all(&resp).unwrap();
                     } else {
                         //eprintln!("db: {:?}", new_db);
@@ -363,8 +357,7 @@ fn handle_client(
 
                     let directory = dir.as_ref().unwrap();
                     //eprintln!("OUND DIR");
-                    // create a new file path
-                    // then write current hashmap to rdb
+                    // write current hashmap to rdb
                     path = Path::new(directory).join(file);
                 } else {
                     path = env::current_dir().unwrap().join("dump.rdb");
@@ -380,14 +373,14 @@ fn handle_client(
                 print_hex::print_hex_dump(&buffer);
                 match read_rdb_file(path) {
                     Ok(rdb) => {
-                        let ret_keys = read_rdb_keys(rdb, all_lines[3].clone());
+                        let ret_keys = utils::read_rdb_keys(rdb, all_lines[3].clone());
 
                         //EXAMPLE: *1\r\n$3\r\nfoo\r\n
                         let _ = stream.write_all(
                             &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"].concat(),
                         );
                         ret_keys.iter().enumerate().for_each(|(_, e)| {
-                            let _ = stream.write_all(&get_bulk_string(e));
+                            let _ = stream.write_all(&utils::get_bulk_string(e));
                         });
                     }
                     Err(_e) => {
@@ -451,20 +444,16 @@ fn handle_client(
                         _ => {}
                     }
                     eprintln!("INFO RESPONSE:{:?}", use_resp);
-                    stream.write_all(&get_bulk_string(&use_resp))?;
+                    stream.write_all(&utils::get_bulk_string(&use_resp))?;
                 } else {
                     eprintln!("IN INFO ELSE");
-                    let mut info_res: Vec<u8> = Vec::new();
                     let mut use_val = String::new();
-                    for (k, v) in info_fields.iter() {
-                        eprintln!("IN For fields, k:{k}, v:{v}",);
-                        use_val.push_str(k);
-                        use_val.push_str(":");
-                        use_val.push_str(v);
-                        use_val.push_str("\r\n");
-                    }
+
+                    info_fields
+                        .iter()
+                        .for_each(|(k, v)| use_val.extend([k, ":", v, "\r\n"]));
                     // remove the last CRLF
-                    info_res = get_bulk_string(&use_val[..use_val.len() - 2]);
+                    let info_res = utils::get_bulk_string(&use_val[..use_val.len() - 2]);
                     eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
                     stream.write_all(&info_res)?;
                 }
@@ -480,7 +469,8 @@ fn handle_client(
                     FULLRESYNC.as_bytes(),
                     b" ",
                     info_fields.get(MASTER_REPL_ID).unwrap().as_bytes(),
-                    b" 0",
+                    b" ",
+                    info_fields.get(MASTER_REPL_OFFSET).unwrap().as_bytes(),
                     b"\r\n",
                 ]
                 .concat();
@@ -494,91 +484,4 @@ fn handle_client(
         }
     }
     Ok(())
-}
-
-fn get_simple_string(v: Vec<&str>) -> Vec<&[u8]> {
-    let input_strings: Vec<&[u8]> = v.iter().map(|e| e.as_bytes()).collect();
-    let mut x: Vec<&[u8]> = Vec::new();
-    x.push("+".as_bytes());
-    x.extend(input_strings);
-    x.push("\r\n".as_bytes());
-    x
-}
-
-fn get_bulk_string(res: &str) -> Vec<u8> {
-    //fn get_bulk_string(res: &str) -> &[u8] {
-    let res_size = res.len();
-    [
-        b"$",
-        res_size.to_string().as_bytes(),
-        b"\r\n",
-        res.as_bytes(),
-        b"\r\n",
-    ]
-    .concat()
-}
-
-//fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
-
-fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
-    //eprintln!("Successful rdb read");
-    let mut ret_keys = Vec::new();
-    //get by index
-    // TODO! instead of hardcoding, find the latest key, i.e largest num
-    if let Some(db) = rdb.databases.get(&0) {
-        //eprintln!("GOT DB ROM RDB FILE {:?}", db);
-        match search_key.as_str() {
-            "*" => {
-                //eprintln!("GOT * search");
-                db.data.clone().into_iter().for_each(|(k, _)| {
-                    ret_keys.push(k);
-                });
-            }
-            _others => {
-                let search_strings: Vec<&str> = search_key.split("*").collect();
-
-                //eprintln!(
-                //      "GOT OTHERS search:{others}, searching with {:?}",
-                //      search_strings
-                //  );
-                db.data.clone().into_iter().for_each(|(k, _)| {
-                    if search_strings.iter().all(|e| k.contains(e)) {
-                        ret_keys.push(k);
-                    }
-                });
-            }
-        }
-    }
-    //eprintln!("All KEYS to return:{:?}", ret_keys);
-    ret_keys
-}
-
-/**
-*
-*   https://redis.io/docs/latest/develop/reference/protocol-spec/#bulk-strings
-    /The exact bytes your program will receive won't be just ECHO hey, you'll receive something like this: *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n. That's ["ECHO", "hey"] encoded using the Redis protocol.
-*
-**/
-fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
-    let mut all_lines = Vec::new();
-    let mut my_iter = BufReader::new(stream).lines();
-
-    /*
-     * if next returns None then no more lines
-     */
-    let arr_length = my_iter.next()?;
-
-    /*
-    * for each element we'll have 2 lines, one with the size and the other with the text
-        so arr_length will ne provided num of elements * 2
-    */
-    let arr_length = &arr_length.expect("failed to unwrap arr length line from buf")[1..]
-        .parse::<usize>()
-        .expect("failed to get bulk string element num from stream");
-
-    let n = arr_length * 2;
-    for _ in 0..n {
-        all_lines.push(my_iter.next()?.unwrap());
-    }
-    Some(all_lines)
 }
