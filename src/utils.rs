@@ -91,10 +91,12 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     if first_line.chars().nth(0).unwrap() != '*' {
         eprintln!("FOUND LENGTH RESPONSE:{first_line}");
 
-        let rdb_len = first_line
-            .trim()
+        for x in first_line.trim().chars() {
+            eprintln!("digit?, {x}");
+        }
+        let rdb_len = first_line.trim()[1..]
             .parse::<usize>()
-            .expect("failed to paese rdb length");
+            .expect("failed to parse rdb length");
         let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
         eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
         bulk_reader
