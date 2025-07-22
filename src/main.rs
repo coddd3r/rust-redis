@@ -23,7 +23,18 @@ const MASTER: &str = "master";
 const SLAVE: &str = "slave";
 const MASTER_REPL_OFFSET: &str = "master_repl_offset";
 const MASTER_REPL_ID: &str = "master_replid";
+const REPL_CONF: &str = "REPLCONF";
+const LISTENING_PORT: &str = "listening-port";
 
+fn get_repl_bytes(first: &str, second: &str, third: &str) -> Vec<u8> {
+    [
+        b"*3\r\n",
+        get_bulk_string(first).as_slice(),
+        get_bulk_string(second).as_slice(),
+        get_bulk_string(third).as_slice(),
+    ]
+    .concat()
+}
 fn main() {
     let mut id = Uuid::new_v4().to_string();
     id.push_str("2025");
@@ -36,8 +47,9 @@ fn main() {
     //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
-    let mut port = None;
     let mut b = arg_list.into_iter();
+    let mut full_port = String::from("127.0.0.1:");
+    let mut port_found = false;
     while let Some(a) = b.next() {
         match a.as_str() {
             "--dir" => {
@@ -48,7 +60,14 @@ fn main() {
                 db_filename = b.next();
                 //eprintln!("GOT ILE");
             }
-            "--port" => port = b.next(),
+            "--port" => {
+                port_found = true;
+                if let Some(p) = b.next() {
+                    full_port.push_str(&p);
+                } else {
+                    full_port.push_str("6379");
+                }
+            }
             "--replicaof" => {
                 let curr_role = info_fields.get_mut(ROLE).unwrap();
                 *curr_role = SLAVE.to_string();
@@ -58,10 +77,35 @@ fn main() {
                     let mut send_to = String::from(master_port[0]);
                     send_to.push_str(":");
                     send_to.push_str(master_port[1]);
+                    eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(mut conn) => {
                             let buf = b"*1\r\n$4\r\nPING\r\n";
                             conn.write_all(buf).expect("FAILED TO PING master");
+                            //confirm listening on to main node
+                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
+                            let mut use_buf = String::new();
+                            let _ = buf_reader.read_line(&mut use_buf);
+                            eprintln!("First handshake done, response:{:?}", use_buf);
+
+                            let repl_port = get_repl_bytes(REPL_CONF, LISTENING_PORT, &full_port);
+
+                            conn.write_all(&repl_port)
+                                .expect("FAILED TO REPLCONF master");
+                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
+                            let mut use_buf = String::new();
+                            let _ = buf_reader.read_line(&mut use_buf);
+                            eprintln!("Second handshake done, response:{}", use_buf);
+
+                            let repl_capa = get_repl_bytes(REPL_CONF, "capa", "psync2");
+
+                            conn.write_all(&repl_capa)
+                                .expect("FAILED TO REPLCONF master");
+
+                            let mut buf_reader = BufReader::new(conn.try_clone().unwrap());
+                            let mut use_buf = String::new();
+                            let _ = buf_reader.read_line(&mut use_buf);
+                            eprintln!("Third handshake done, response:{}", use_buf);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -83,13 +127,9 @@ fn main() {
         }
     }
 
-    let mut full_port = String::from("127.0.0.1:");
-    if let Some(p) = port {
-        full_port.push_str(&p);
-    } else {
+    if !port_found {
         full_port.push_str("6379");
     }
-
     eprintln!("Binding to port:{full_port}");
     let listener = TcpListener::bind(&full_port).unwrap();
     eprintln!("Listening on port:{full_port}");
@@ -163,7 +203,9 @@ fn handle_client(
 
         match cmd.to_lowercase().as_str() {
             "ping" => {
+                eprintln!("IN PING");
                 stream.write_all(b"+PONG\r\n").unwrap();
+                eprintln!("AFTER PING");
             }
             "echo" => {
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
@@ -226,7 +268,7 @@ fn handle_client(
                         },
                     );
                 }
-                stream.write_all(RESP_OK).unwrap();
+                stream.write_all(RESP_OK)?;
             }
 
             /*
@@ -261,7 +303,7 @@ fn handle_client(
             }
 
             /*
-             *CONIG
+             *CONFIG
              * */
             "config" => {
                 let config_command = all_lines[3].to_lowercase();
@@ -415,6 +457,13 @@ fn handle_client(
                 }
                 eprintln!("AFTER INFO SECTION");
             }
+            "replconf" => {
+                match stream.write_all(RESP_OK) {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("ERROR IN RESPLCONF{:?}", e),
+                };
+                eprintln!("WROTE ok to replconf");
+            }
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
                     "UNRECOGNIZED COMMAND",
@@ -426,6 +475,7 @@ fn handle_client(
 }
 
 fn get_bulk_string(res: &str) -> Vec<u8> {
+    //fn get_bulk_string(res: &str) -> &[u8] {
     let res_size = res.len();
     [
         b"$",
@@ -491,11 +541,12 @@ fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     * for each element we'll have 2 lines, one with the size and the other with the text
         so arr_length will ne provided num of elements * 2
     */
-    let arr_length = arr_length.expect("failed to unwrap arr length line from buf")[1..]
+    let arr_length = &arr_length.expect("failed to unwrap arr length line from buf")[1..]
         .parse::<usize>()
-        .expect("failed to get bulk string element num from stream")
-        * 2;
-    for _ in 0..arr_length {
+        .expect("failed to get bulk string element num from stream");
+
+    let n = arr_length * 2;
+    for _ in 0..n {
         all_lines.push(my_iter.next()?.unwrap());
     }
     Some(all_lines)
