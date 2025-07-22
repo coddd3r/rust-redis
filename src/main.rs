@@ -50,6 +50,7 @@ fn main() {
     let mut b = arg_list.into_iter();
     let mut full_port = String::from("127.0.0.1:");
     let mut port_found = false;
+    let mut short_port = String::new();
     while let Some(a) = b.next() {
         match a.as_str() {
             "--dir" => {
@@ -64,6 +65,7 @@ fn main() {
                 port_found = true;
                 if let Some(p) = b.next() {
                     full_port.push_str(&p);
+                    short_port = p;
                 } else {
                     full_port.push_str("6379");
                 }
@@ -88,7 +90,7 @@ fn main() {
                             let _ = buf_reader.read_line(&mut use_buf);
                             eprintln!("First handshake done, response:{:?}", use_buf);
 
-                            let repl_port = get_repl_bytes(REPL_CONF, LISTENING_PORT, &full_port);
+                            let repl_port = get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
 
                             conn.write_all(&repl_port)
                                 .expect("FAILED TO REPLCONF master");
