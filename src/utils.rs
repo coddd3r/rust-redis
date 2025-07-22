@@ -123,28 +123,20 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
         eprintln!("initial array length{first_line}");
         let mut my_iter = bulk_reader.lines().peekable();
 
-        /*
-         * if next returns None then no more lines
-         */
-        let arr_length = my_iter.next()?;
-
-        /*
-        * for each element we'll have 2 lines, one with the size and the other with the text
-            so arr_length will ne provided num of elements * 2
-        */
-        let arr_length = &arr_length.expect("failed to unwrap arr length line from buf")[1..]
+        // for each element we'll have 2 lines, one with the size and the other with the text
+        //   so arr_length will ne provided num of elements * 2
+        let arr_length = first_line.trim()[1..]
             .parse::<usize>()
             .expect("failed to get bulk string element num from stream");
 
         let n = arr_length * 2;
         eprintln!("GOT SIZE:{n}");
 
-        for _ in 0..1 {
+        for _ in 0..n {
             all_lines.push(my_iter.next()?.unwrap());
         }
     }
     Some(all_lines)
-    //eprintln!("after push, peek:{:?}", my_iter.peek())
 }
 
 //fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
