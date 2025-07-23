@@ -75,74 +75,82 @@ pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
 **/
 pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     let mut all_lines = Vec::new();
-    let mut bulk_reader = BufReader::new(stream);
+    let mut bulk_reader = BufReader::new(stream.try_clone().unwrap());
     let mut first_line = String::new();
     bulk_reader.read_line(&mut first_line).unwrap();
     if first_line.is_empty() {
         eprintln!("EMPTY LINE");
         return None;
     }
-    if first_line.chars().nth(0).unwrap() != '*' {
-        eprintln!("FOUND LENGTH RESPONSE:{first_line}");
+    let first_char = first_line.chars().nth(0).unwrap();
+    match first_char {
+        '*' => {
+            eprintln!("initial array length{first_line}");
+            let mut my_iter = bulk_reader.lines().peekable();
 
-        for x in first_line.trim().chars() {
-            eprintln!("digit?, {x}");
+            // for each element we'll have 2 lines, one with the size and the other with the text
+            //   so arr_length will ne provided num of elements * 2
+            let arr_length = first_line.trim()[1..]
+                .parse::<usize>()
+                .expect("failed to get bulk string element num from stream");
+
+            let n = arr_length * 2;
+            eprintln!("GOT SIZE:{n}");
+
+            for _ in 0..n {
+                all_lines.push(my_iter.next()?.unwrap());
+            }
         }
-        let rdb_len = first_line.trim()[1..]
-            .parse::<usize>()
-            .expect("failed to parse rdb length");
-        let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
-        eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
-        bulk_reader
-            .read_exact(&mut received_rdb)
-            //.read_until(0xFF, &mut received_rdb)
-            .expect("FAILED TO READ RDB BYTES");
-
-        //eprintln!("read from stream num bytes:{num_bytes_read}");
-        eprintln!(
-            "read from stream num rdb file:{:?}, length:{:?}",
-            received_rdb,
-            received_rdb.len()
-        );
-
-        let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
-
-        let mut file = File::create(&received_rdb_path).unwrap();
-        file.write_all(&received_rdb)
-            .expect("failed to write receive rdb to file");
-        eprintln!("WRPTE RESPONSE TO FILE");
-        let rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
-            .expect("failed tp read response rdb from file");
-        eprintln!("RDB:{:?}", rdb);
-        eprintln!("final all lines{:?}", all_lines);
-    } else {
-        eprintln!("initial array length{first_line}");
-        let mut my_iter = bulk_reader.lines().peekable();
-
-        // for each element we'll have 2 lines, one with the size and the other with the text
-        //   so arr_length will ne provided num of elements * 2
-        let arr_length = first_line.trim()[1..]
-            .parse::<usize>()
-            .expect("failed to get bulk string element num from stream");
-
-        let n = arr_length * 2;
-        eprintln!("GOT SIZE:{n}");
-
-        for _ in 0..n {
-            all_lines.push(my_iter.next()?.unwrap());
+        '+' | '-' | ':' | '$' => {}
+        _ => {
+            eprintln!("FOUND LENGTH RESPONSE:{first_line}");
+            let rdb = read_db_from_stream(first_line, bulk_reader);
+            eprintln!("RDB IN UTILS:{:?}", rdb);
+            eprintln!("final all lines{:?}", all_lines);
         }
     }
     Some(all_lines)
 }
 
+pub fn read_db_from_stream<R: Read>(first_line: String, mut bulk_reader: R) -> RdbFile {
+    let rdb_len = first_line.trim()[1..]
+        .parse::<usize>()
+        .expect("failed to parse rdb length");
+    let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+    eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
+    bulk_reader
+        .read_exact(&mut received_rdb)
+        //.read_until(0xFF, &mut received_rdb)
+        .expect("FAILED TO READ RDB BYTES");
+
+    //eprintln!("read from stream num bytes:{num_bytes_read}");
+    eprintln!(
+        "read from stream num rdb file:{:?}, length:{:?}",
+        received_rdb,
+        received_rdb.len()
+    );
+
+    let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
+
+    let mut file = File::create(&received_rdb_path).unwrap();
+    file.write_all(&received_rdb)
+        .expect("failed to write receive rdb to file");
+    eprintln!("WRPTE RESPONSE TO FILE");
+    codecrafters_redis::read_rdb_file(received_rdb_path)
+        .expect("failed tp read response rdb from file")
+}
+
 pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
+    eprintln!("reading response from:{:?}", st);
     let mut buf_reader = BufReader::new(st.try_clone().unwrap());
     let mut use_buf = String::new();
+    eprintln!("in read_response before read line:{:?}", buf_reader);
     let _ = buf_reader.read_line(&mut use_buf);
 
     if let Some(x) = n {
         eprintln!("{x}th handshake done, response:{}", use_buf);
     }
+    eprintln!("finished reading response from stream");
     use_buf
 }
 
