@@ -6,6 +6,7 @@ use std::fs::{self, File};
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
@@ -18,8 +19,9 @@ use codecrafters_redis::{
 
 mod threadpool;
 use threadpool::ThreadPool;
+use tokio::sync::broadcast;
 
-use crate::utils::{get_bulk_string, read_response};
+use crate::utils::{get_bulk_string, read_response, write_resp_arr};
 mod utils;
 
 const ROLE: &str = "role";
@@ -37,8 +39,8 @@ const RESP_NULL: &[u8; 5] = b"$-1\r\n";
 
 fn main() {
     let id = utils::random_id_gen();
-    let mut info_fields: HashMap<&str, String> = HashMap::new();
-    info_fields.insert(ROLE, MASTER.to_string());
+    let mut info_fields: HashMap<String, String> = HashMap::new();
+    info_fields.insert(String::from(ROLE), MASTER.to_string());
     eprintln!("ID:{:?}", id);
     //info_fields.insert("id", id);
 
@@ -81,22 +83,23 @@ fn main() {
                     eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(mut conn) => {
-                            let buf = b"*1\r\n$4\r\nPING\r\n";
-                            conn.write_all(buf).expect("FAILED TO PING master");
+                            //let buf = b"*1\r\n$4\r\nPING\r\n";
+                            let buf = write_resp_arr(vec!["PING"]);
+                            conn.write_all(&buf).expect("FAILED TO PING master");
                             //confirm listening on to main node
-                            let _ = read_response(&conn, 1);
+                            let _ = read_response(&conn, Some(1));
                             let repl_port =
                                 utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
                             conn.write_all(&repl_port).expect("FAILED to reply master");
-                            let _ = read_response(&conn, 2);
+                            let _ = read_response(&conn, Some(2));
 
                             let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
                             conn.write_all(&repl_capa).expect("FAILED TO reply master");
-                            let _ = read_response(&conn, 3);
+                            let _ = read_response(&conn, Some(3));
 
                             let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
                             conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
-                            let _ = read_response(&conn, 4);
+                            let _ = read_response(&conn, Some(4));
 
                             let mut first_line = String::new();
                             let mut bulk_reader = BufReader::new(conn);
@@ -150,10 +153,10 @@ fn main() {
     let rl = info_fields.get(ROLE);
     if let Some(r) = rl {
         if r == MASTER {
-            info_fields.insert(MASTER_REPL_ID, id.clone());
-            info_fields.insert(MASTER_REPL_OFFSET, "0".to_string());
+            info_fields.insert(String::from(MASTER_REPL_ID), id.clone());
+            info_fields.insert(String::from(MASTER_REPL_OFFSET), "0".to_string());
         } else {
-            info_fields.insert("repl_id", id.clone());
+            info_fields.insert(String::from("repl_id"), id.clone());
         }
     }
 
@@ -164,18 +167,24 @@ fn main() {
     let listener = TcpListener::bind(&full_port).unwrap();
     eprintln!("Listening on port:{full_port}");
 
+    let broadcast_ports: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stream_pool = ThreadPool::new(4);
+
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
                 println!("accepted new connection");
                 let dir_arg = dir.clone();
                 let db_arg = db_filename.clone();
-                let info_fields = info_fields.clone();
+                let i_fields = info_fields.clone();
+
+                let b_ports = Arc::clone(&broadcast_ports);
+
                 stream_pool.execute(move || {
-                    let res = handle_client(_stream, dir_arg, db_arg, &info_fields);
+                    let res = handle_client(_stream, dir_arg, db_arg, i_fields, b_ports);
                     match res {
-                        Ok(_) => (),
+                        Ok(_) => {}
+                        //Ok(ports_returned) => (),
                         Err(e) => {
                             eprintln!("Error handling client {}", e);
                         }
@@ -194,9 +203,13 @@ fn handle_client(
     mut stream: TcpStream,
     dir: Option<String>,
     db_filename: Option<String>,
-    info_fields: &HashMap<&str, String>,
+    info_fields: HashMap<String, String>,
+    //mut broadcast_ports: &Vec<String>,
+    broadcast_ports: Arc<std::sync::Mutex<Vec<String>>>,
 ) -> Result<(), Box<dyn Error>> {
+    //) -> Result<Vec<String>, Box<dyn Error>> {
     let mut new_db = RedisDatabase::new();
+
     //if file exists use the first db in the indexing, else use a new db
     if db_filename.is_some() && dir.is_some() {
         let file = db_filename.as_ref().unwrap();
@@ -215,6 +228,7 @@ fn handle_client(
     }
 
     loop {
+        eprintln!("LOOP broadcast:{:?}", broadcast_ports);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
@@ -227,6 +241,40 @@ fn handle_client(
 
         let cmd = &all_lines[1];
 
+        fn broadcast_commands(cmd: &[String], client_ports: Arc<Mutex<Vec<String>>>) {
+            let client_ports = client_ports
+                .lock()
+                .expect("failed to lock ports in broadcast command fn");
+            eprintln!("in broadcast, ports:{:?}", client_ports);
+
+            let no_length = cmd
+                .into_iter()
+                .filter(|e| !e.starts_with('$'))
+                .into_iter()
+                .map(|e| e.as_str())
+                .collect();
+
+            eprintln!("getting bytes for broadcast commands:{:?}", no_length);
+            let broadcast_bytes: Vec<u8> = write_resp_arr(no_length);
+            client_ports.iter().for_each(|p| {
+                let mut full_port = String::from("127.0.0.1:");
+                full_port.push_str(p);
+
+                match TcpStream::connect(full_port) {
+                    Ok(mut conn) => {
+                        conn.write_all(&broadcast_bytes)
+                            .expect("FAILED TO PING master");
+                        let broadcast_resp = read_response(&conn, None);
+                        eprintln!("gor broadcast resp:{broadcast_resp}")
+                    }
+                    Err(e) => {
+                        eprintln!("error broadcasting commands{e}");
+                    }
+                }
+
+                //confirm listening on to main node
+            });
+        }
         match cmd.to_lowercase().as_str() {
             "ping" => {
                 stream.write_all(b"+PONG\r\n").unwrap();
@@ -235,10 +283,11 @@ fn handle_client(
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
                 stream.write_all(&resp).unwrap();
             }
-            /*
-             * SET SECTION
-             * */
+
             "set" => {
+                if info_fields.get(ROLE).unwrap() == MASTER {
+                    broadcast_commands(all_lines.as_slice(), broadcast_ports.clone());
+                }
                 let k = all_lines[3].clone();
                 let v = all_lines[5].clone();
 
@@ -334,6 +383,7 @@ fn handle_client(
                 let config_field = all_lines[5].to_lowercase();
 
                 fn config_response(field_type: &str, field_name: &str) -> Vec<u8> {
+                    write_resp_arr(vec![field_type, field_name]);
                     let mut resp: Vec<u8> = Vec::new();
                     resp.extend_from_slice(b"*2\r\n");
                     resp.extend(get_bulk_string(field_type));
@@ -457,7 +507,7 @@ fn handle_client(
                             let fields = [ROLE, MASTER_REPL_ID, MASTER_REPL_OFFSET];
                             fields.iter().for_each(|elem| {
                                 use_resp.push_str(elem);
-                                use_resp.push_str(info_fields.get(elem).unwrap());
+                                use_resp.push_str(info_fields.get(*elem).unwrap());
                             });
                         }
                         _ => {}
@@ -479,6 +529,16 @@ fn handle_client(
                 eprintln!("AFTER INFO SECTION");
             }
             "replconf" => {
+                eprintln!("in repl conf alllines:{:?}", all_lines);
+                let is_listener = all_lines.iter().any(|e| e == LISTENING_PORT);
+                eprintln!("is LISTENER handshake?:{is_listener}");
+                if is_listener {
+                    broadcast_ports
+                        .lock()
+                        .expect("failed to lock broadcast port vec")
+                        .push(all_lines[5].clone());
+                }
+                eprintln!("after repl pushing ports:{:?}", broadcast_ports);
                 stream.write_all(RESP_OK)?;
                 eprintln!("WROTE ok to replconf");
             }

@@ -20,13 +20,7 @@ pub fn get_bulk_string(res: &str) -> Vec<u8> {
 }
 
 pub fn get_repl_bytes(first: &str, second: &str, third: &str) -> Vec<u8> {
-    [
-        b"*3\r\n",
-        get_bulk_string(first).as_slice(),
-        get_bulk_string(second).as_slice(),
-        get_bulk_string(third).as_slice(),
-    ]
-    .concat()
+    write_resp_arr(vec![first, second, third])
 }
 
 pub fn random_id_gen() -> String {
@@ -141,14 +135,28 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     Some(all_lines)
 }
 
-pub fn read_response(st: &TcpStream, n: usize) -> String {
+pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
     let mut buf_reader = BufReader::new(st.try_clone().unwrap());
     let mut use_buf = String::new();
     let _ = buf_reader.read_line(&mut use_buf);
 
-    eprintln!("{n}th handshake done, response:{}", use_buf);
+    if let Some(x) = n {
+        eprintln!("{x}th handshake done, response:{}", use_buf);
+    }
     use_buf
 }
+
+pub fn write_resp_arr(cmd: Vec<&str>) -> Vec<u8> {
+    let mut full_bytes = Vec::new();
+    full_bytes.extend_from_slice(b"*");
+    full_bytes.extend_from_slice(cmd.len().to_string().as_bytes());
+    full_bytes.extend_from_slice(b"\r\n");
+
+    cmd.iter()
+        .for_each(|e| full_bytes.extend(get_bulk_string(e)));
+    full_bytes
+}
+
 //fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()
