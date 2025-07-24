@@ -244,6 +244,7 @@ pub fn handle_set(
     new_db: &Arc<Mutex<RedisDatabase>>,
     expiry_info: Option<(&str, &str)>,
 ) -> Result<(), Box<RdbError>> {
+    eprintln!("HANDLING SET FOR K:{k}, V:{v}");
     let mut use_insert = RedisValue {
         value: v,
         expires_at: None,
