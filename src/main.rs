@@ -291,15 +291,22 @@ fn handle_master(
         if first_line.is_empty() {
             eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
         } else {
-            eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
+            //eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
             let rdb_len = first_line[1..]
                 .trim()
                 .parse::<usize>()
                 .expect("failed to parse rdb length");
 
             //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-            eprintln!("IGNORING RDB BYTES");
-            bulk_reader.consume(rdb_len);
+            //eprintln!("IGNORING RDB BYTES");
+            //bulk_reader.consume(rdb_len);
+
+            let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+
+            bulk_reader
+                .read_exact(&mut received_rdb)
+                .expect("FAILE TO READ RDB IN HANDSHAKE");
+
             //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
             //decode_rdb(rdb_bytes);
         }
