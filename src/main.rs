@@ -22,8 +22,8 @@ use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
 use crate::utils::{
-    decode_bulk_string, get_bulk_string, get_port, read_db_from_stream, read_response,
-    write_resp_arr,
+    broadcast_commands, decode_bulk_string, get_bulk_string, get_port, handle_set,
+    read_db_from_stream, read_response, write_resp_arr,
 };
 mod utils;
 
@@ -103,6 +103,7 @@ fn main() {
     let mut short_port = String::new();
 
     let mut master_port: Option<String> = None;
+    let mut master_conn: Option<TcpStream> = None;
     let broadcast_info = BroadCastInfo::new();
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(broadcast_info));
     while let Some(a) = b.next() {
@@ -172,15 +173,7 @@ fn main() {
                                 //eprintln!("AFTER rdb, read:{r}");
                             }
                             eprintln!("HANDLING MASTER PORT");
-                            handle_client(
-                                conn,
-                                dir.clone(),
-                                db_filename.clone(),
-                                info_fields.clone(),
-                                broadcast_info.clone(),
-                                &master_port,
-                            )
-                            .expect("failed to HANDLE MASTER CLIENT");
+                            master_conn = Some(conn);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -208,6 +201,44 @@ fn main() {
     eprintln!("Listening on port:{full_port}");
 
     let stream_pool = ThreadPool::new(4);
+    let mut new_db = RedisDatabase::new();
+    //if file exists use the first db in the indexing, else use a new db
+    if db_filename.is_some() && dir.is_some() {
+        let file = db_filename.as_ref().unwrap();
+        let directory = dir.as_ref().unwrap();
+        let path = Path::new(directory).join(file);
+
+        match read_rdb_file(path) {
+            Ok(rdb) => {
+                let opt_db = rdb.databases.get(&0u8);
+                if let Some(storage_db) = opt_db {
+                    new_db = storage_db.clone();
+                }
+            }
+            Err(_e) => {}
+        }
+    }
+
+    let new_db = Arc::new(Mutex::new(new_db));
+
+    // start a loop for the master connection
+    if let Some(m_conn) = master_conn {
+        let i_fields = info_fields.clone();
+        let m_port = master_port.clone();
+
+        let use_db = Arc::clone(&new_db);
+        let b_info = Arc::clone(&broadcast_info);
+
+        stream_pool.execute(move || {
+            let res = handle_master(m_conn, i_fields, b_info, &m_port, &use_db);
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error handling Master {}", e);
+                }
+            }
+        });
+    }
 
     for stream in listener.incoming() {
         match stream {
@@ -219,9 +250,11 @@ fn main() {
                 let m_port = master_port.clone();
 
                 let b_info = Arc::clone(&broadcast_info);
+                let use_db = Arc::clone(&new_db);
 
                 stream_pool.execute(move || {
-                    let res = handle_client(_stream, dir_arg, db_arg, i_fields, b_info, &m_port);
+                    let res =
+                        handle_client(_stream, dir_arg, db_arg, i_fields, b_info, &m_port, &use_db);
                     match res {
                         Ok(_) => {}
                         //Ok(ports_returned) => (),
@@ -241,48 +274,14 @@ fn main() {
 
 fn handle_master(
     mut stream: TcpStream,
-    dir: Option<String>,
-    db_filename: Option<String>,
     info_fields: HashMap<String, String>,
     broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
     master_port: &Option<String>,
+    new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
-}
-
-fn handle_client(
-    mut stream: TcpStream,
-    dir: Option<String>,
-    db_filename: Option<String>,
-    info_fields: HashMap<String, String>,
-    broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
-    master_port: &Option<String>,
-) -> Result<(), Box<dyn Error>> {
-    //) -> Result<Vec<String>, Box<dyn Error>> {
-    let mut new_db = RedisDatabase::new();
-    let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    eprintln!("MASTER PORT:{:?}", master_port);
-    if sent_by_main {
-        eprintln!("\n\n\nSENT BY MAIN\n\n");
-    };
-
-    //if file exists use the first db in the indexing, else use a new db
-    if db_filename.is_some() && dir.is_some() {
-        let file = db_filename.as_ref().unwrap();
-        let directory = dir.as_ref().unwrap();
-        let path = Path::new(directory).join(file);
-
-        match read_rdb_file(path) {
-            Ok(rdb) => {
-                let opt_db = rdb.databases.get(&0u8);
-                if let Some(storage_db) = opt_db {
-                    new_db = storage_db.clone();
-                }
-            }
-            Err(_e) => {}
-        }
-    }
-
+    eprintln!("\n\nHANDLING MASTER\n");
     loop {
+        eprintln!("IN MASTER LOOP, master port:{:?}", master_port);
         eprintln!("LOOP broadcast:{:?}", &broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
@@ -296,41 +295,6 @@ fn handle_client(
 
         let cmd = &all_lines[1];
 
-        fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
-            eprintln!("in BROADCAST, info:{:?}", b_info);
-
-            let broadcast_bytes = write_resp_arr(
-                cmd.iter()
-                    .filter(|e| !e.starts_with('$'))
-                    .map(|e| e.as_str())
-                    .collect::<Vec<_>>(),
-            );
-
-            let (conn, client_ports) = {
-                let curr_info = b_info.lock().unwrap();
-                (curr_info.connections.clone(), curr_info.ports.clone())
-            };
-            //conn.iter().enumerate().for_each(|(i, conn)| {
-            // let mut full_port = String::from("127.0.0.1:");
-            // full_port.push_str(p);
-            for (i, conn) in conn.iter().enumerate() {
-                let mut c = conn.stream.lock().unwrap();
-                eprintln!(
-                    "in client streams, port:{}, stream:{:?}",
-                    client_ports[i], c
-                );
-                eprintln!(
-                    "broadcast MESSAGE: {:?}",
-                    String::from_utf8(broadcast_bytes.clone()).unwrap()
-                );
-                c.write_all(&broadcast_bytes)
-                    .expect("FAILED TO PING master");
-                eprintln!("wrote broadcst to port");
-                //confirm listening on to main node
-            }
-            //});
-            eprintln!("after clients lopp in broadcast");
-        }
         match cmd.to_lowercase().as_str() {
             "ping" => {
                 stream.write_all(b"+PONG\r\n").unwrap();
@@ -348,57 +312,70 @@ fn handle_client(
                 let v = all_lines[5].clone();
 
                 if all_lines.len() > 6 {
-                    new_db.insert(
-                        k,
-                        RedisValue {
-                            value: v,
-                            expires_at: None,
-                        },
-                    );
-                    match all_lines[7].to_lowercase().as_str() {
-                        "px" => {
-                            let time_arg: u64 = all_lines[9].parse()?;
-                            let now = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as u64; //eprintln!("got MILLISECONDS expiry:{time_arg}");
-                            let end_time_s = now + time_arg;
-                            //eprintln!("AT: {now}, MSexpiry:{time_arg},end:{end_time_s}");
-                            let use_expiry = Some(Expiration::Milliseconds(end_time_s));
-                            let curr_val = new_db.data.get_mut(&all_lines[3]).unwrap();
-                            curr_val.expires_at = use_expiry;
-                        }
-                        "ex" => {
-                            let time_arg: u32 = all_lines[9].parse()?;
-                            let now = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs();
-                            let end_time_s = now as u32 + time_arg;
-
-                            //eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
-                            let use_expiry = Some(Expiration::Seconds(end_time_s as u32));
-                            let curr_val = new_db.data.get_mut(&all_lines[3]).unwrap();
-                            curr_val.expires_at = use_expiry;
-                        }
-                        _ => {
-                            return Err(Box::new(RdbError::UnsupportedFeature(
-                                "WRONG SET ARGUMENTS",
-                            )))
-                        }
-                    }
-                    //eprintln!("before inserting in db, expiry:{:?}", use_expiry);
+                    handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
                 } else {
-                    new_db.insert(
-                        k,
-                        RedisValue {
-                            value: v,
-                            expires_at: None,
-                        },
-                    );
+                    handle_set(k, v, &new_db, None)?;
                 }
-                if !sent_by_main {
-                    stream.write_all(RESP_OK).unwrap();
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_client(
+    mut stream: TcpStream,
+    dir: Option<String>,
+    db_filename: Option<String>,
+    info_fields: HashMap<String, String>,
+    broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
+    master_port: &Option<String>,
+    new_db: &Arc<Mutex<RedisDatabase>>,
+) -> Result<(), Box<dyn Error>> {
+    let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
+    eprintln!("MASTER PORT IN CLIENT???:{:?}", master_port);
+    if sent_by_main {
+        eprintln!("\n\n\nSENT BY MAIN\n\n");
+    };
+
+    loop {
+        eprintln!("LOOP broadcast:{:?}", &broadcast_info);
+        let Some(all_lines) = utils::decode_bulk_string(&stream) else {
+            break;
+        };
+        if all_lines.len() <= 1 {
+            eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+            stream.write_all(RESP_OK).unwrap();
+            continue;
+        }
+        eprintln!("ALL LINES:{:?}", all_lines);
+
+        let cmd = &all_lines[1];
+
+        match cmd.to_lowercase().as_str() {
+            "ping" => {
+                stream.write_all(b"+PONG\r\n").unwrap();
+            }
+            "echo" => {
+                let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
+                stream.write_all(&resp).unwrap();
+            }
+
+            "set" => {
+                if info_fields.get(ROLE).unwrap() == MASTER {
+                    broadcast_commands(all_lines.as_slice(), &broadcast_info);
+                }
+                let k = all_lines[3].clone();
+                let v = all_lines[5].clone();
+
+                if all_lines.len() > 6 {
+                    let r = handle_set(k, v, new_db, Some((&all_lines[7], &all_lines[9])));
+                    if r.is_ok() {
+                        stream.write_all(RESP_OK)?;
+                    }
+                } else {
+                    handle_set(k, v, new_db, None)?;
                 }
             }
 
@@ -409,21 +386,23 @@ fn handle_client(
                 //eprintln!("IN GET");
                 let get_key = &all_lines[3];
 
-                if let Some(res) = new_db.get(&get_key) {
-                    if res.expires_at.is_none()
-                        || (res.expires_at.is_some()
-                            && !res.expires_at.as_ref().unwrap().is_expired())
-                    {
-                        //eprintln!("in get TIME STILL");
-                        let resp = utils::get_bulk_string(&res.value);
-                        stream.write_all(&resp).unwrap();
+                {
+                    let mut lk = new_db.lock().expect("failed to lock db in get");
+                    if let Some(res) = lk.get(&get_key) {
+                        if res.expires_at.is_none()
+                            || (res.expires_at.is_some()
+                                && !res.expires_at.as_ref().unwrap().is_expired())
+                        {
+                            let resp = utils::get_bulk_string(&res.value);
+                            stream.write_all(&resp).unwrap();
+                        } else {
+                            lk.data.remove(get_key);
+                            stream.write_all(RESP_NULL).unwrap();
+                        }
                     } else {
-                        new_db.data.remove(get_key);
+                        //eprintln!("IN GET OUND NOTHING");
                         stream.write_all(RESP_NULL).unwrap();
                     }
-                } else {
-                    //eprintln!("IN GET OUND NOTHING");
-                    stream.write_all(RESP_NULL).unwrap();
                 }
             }
 
@@ -465,6 +444,7 @@ fn handle_client(
                 }
             }
 
+            //KEYS
             "keys" => {
                 let path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
@@ -505,6 +485,8 @@ fn handle_client(
                     }
                 }
             }
+
+            //SAVE
             "save" => {
                 //eprintln!("IN SAVE");
                 let mut path: PathBuf;
@@ -523,9 +505,11 @@ fn handle_client(
                         .metadata
                         .insert("redis-version".to_string(), "6.0.16".to_string());
                     //eprintln!("IN Save, using map {:?}", new_db);
-                    new_rdb.databases.insert(0, new_db.clone());
-                    //eprintln!("Creating a new rdb with {:?}", new_rdb);
-
+                    {
+                        let lk = new_db.lock().expect("failed to lock db in save");
+                        new_rdb.databases.insert(0, lk.clone().try_into()?);
+                        //eprintln!("Creating a new rdb with {:?}", new_rdb);
+                    }
                     let _ = write_rdb_file(path, &new_rdb);
 
                     //eprintln!("after SAVE writing to file");
@@ -539,6 +523,8 @@ fn handle_client(
                     // no need for data as it already mocked
                 }
             }
+
+            //INFO
             "info" => {
                 //if there is an extra key arg
                 eprintln!("IN INFO SECTION");
@@ -575,6 +561,8 @@ fn handle_client(
                 }
                 eprintln!("AFTER INFO SECTION");
             }
+
+            //REPL
             "replconf" => {
                 eprintln!("in repl conf alllines:{:?}", all_lines);
                 let is_listener = all_lines.iter().any(|e| e == LISTENING_PORT);
@@ -588,6 +576,8 @@ fn handle_client(
                 stream.write_all(RESP_OK)?;
                 eprintln!("WROTE ok to replconf");
             }
+
+            //PSYNC
             "psync" => {
                 let resync_response = [
                     b"+",
@@ -637,6 +627,7 @@ fn handle_client(
                     };
                 }
             }
+
             _unrecognized_cmd => {
                 return Err(Box::new(RdbError::UnsupportedFeature(
                     "UNRECOGNIZED COMMAND",

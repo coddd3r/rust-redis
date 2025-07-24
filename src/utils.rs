@@ -1,10 +1,17 @@
-use crate::RdbFile;
+use crate::BroadCastInfo;
+use codecrafters_redis::{
+    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
+    RedisValue,
+};
 use rand::Rng;
 use std::io::{prelude::*, BufReader};
 use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
+use std::time::UNIX_EPOCH;
 
 pub fn get_bulk_string(res: &str) -> Vec<u8> {
     //fn get_bulk_string(res: &str) -> &[u8] {
@@ -173,7 +180,93 @@ pub fn get_port(stream: &TcpStream) -> Option<String> {
         None
     }
 }
-//fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
+
+pub fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
+    eprintln!("in BROADCAST, info:{:?}", b_info);
+
+    let broadcast_bytes = write_resp_arr(
+        cmd.iter()
+            .filter(|e| !e.starts_with('$'))
+            .map(|e| e.as_str())
+            .collect::<Vec<_>>(),
+    );
+
+    let (conn, client_ports) = {
+        let curr_info = b_info.lock().unwrap();
+        (curr_info.connections.clone(), curr_info.ports.clone())
+    };
+    //conn.iter().enumerate().for_each(|(i, conn)| {
+    // let mut full_port = String::from("127.0.0.1:");
+    // full_port.push_str(p);
+    for (i, conn) in conn.iter().enumerate() {
+        let mut c = conn.stream.lock().unwrap();
+        eprintln!(
+            "in client streams, port:{}, stream:{:?}",
+            client_ports[i], c
+        );
+        eprintln!(
+            "broadcast MESSAGE: {:?}",
+            String::from_utf8(broadcast_bytes.clone()).unwrap()
+        );
+        c.write_all(&broadcast_bytes)
+            .expect("FAILED TO PING master");
+        eprintln!("wrote broadcst to port");
+        //confirm listening on to main node
+    }
+    //});
+    eprintln!("after clients lopp in broadcast");
+}
+
+pub fn handle_set(
+    k: String,
+    v: String,
+    new_db: &Arc<Mutex<RedisDatabase>>,
+    expiry_info: Option<(&str, &str)>,
+) -> Result<(), Box<RdbError>> {
+    let mut use_insert = RedisValue {
+        value: v,
+        expires_at: None,
+    };
+    if let Some((expiry_type, expiry_time)) = expiry_info {
+        match expiry_type {
+            "px" => {
+                let time_arg: u64 = expiry_time.parse().expect("failed to parse expiry time");
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64; //eprintln!("got MILLISECONDS expiry:{time_arg}");
+                let end_time_s = now + time_arg;
+                //eprintln!("AT: {now}, MSexpiry:{time_arg},end:{end_time_s}");
+                let use_expiry = Some(Expiration::Milliseconds(end_time_s));
+                use_insert.expires_at = use_expiry;
+            }
+            "ex" => {
+                let time_arg: u32 = expiry_time.parse().expect("failed to parse expiry time");
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let end_time_s = now as u32 + time_arg;
+
+                //eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
+                let use_expiry = Some(Expiration::Seconds(end_time_s as u32));
+                use_insert.expires_at = use_expiry;
+            }
+            _ => {
+                return Err(Box::new(RdbError::UnsupportedFeature(
+                    "WRONG SET ARGUMENTS",
+                )))
+            }
+        }
+        //eprintln!("before inserting in db, expiry:{:?}", use_expiry);
+    }
+
+    {
+        let mut lk = new_db.lock().unwrap();
+        lk.insert(k, use_insert);
+    }
+    Ok(())
+}
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()
 //}
