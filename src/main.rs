@@ -22,8 +22,8 @@ use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
 use crate::utils::{
-    broadcast_commands, decode_bulk_string, get_bulk_string, get_port, handle_get, handle_set,
-    read_db_from_stream, read_response, write_resp_arr,
+    broadcast_commands, decode_bulk_string, decode_rdb, get_bulk_string, get_port, handle_get,
+    handle_set, read_db_from_stream, read_response, write_resp_arr,
 };
 mod utils;
 
@@ -98,15 +98,20 @@ fn main() {
     //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
-    let mut b = arg_list.into_iter();
     let mut full_port = String::from("127.0.0.1:");
     let mut port_found = false;
     let mut short_port = String::new();
 
+    let stream_pool = ThreadPool::new(4);
     let mut master_port: Option<String> = None;
-    let mut master_conn: Option<TcpStream> = None;
+    //let mut master_conn: Option<TcpStream> = None;
     let broadcast_info = BroadCastInfo::new();
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(broadcast_info));
+    let new_db = RedisDatabase::new();
+
+    let mut new_db = Arc::new(Mutex::new(new_db));
+
+    let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
         match a.as_str() {
             "--dir" => {
@@ -116,6 +121,21 @@ fn main() {
             "--dbfilename" => {
                 db_filename = b.next();
                 //eprintln!("GOT ILE");
+                if db_filename.is_some() && dir.is_some() {
+                    let file = db_filename.as_ref().unwrap();
+                    let directory = dir.as_ref().unwrap();
+                    let path = Path::new(directory).join(file);
+
+                    match read_rdb_file(path) {
+                        Ok(rdb) => {
+                            let opt_db = rdb.databases.get(&0u8);
+                            if let Some(storage_db) = opt_db {
+                                new_db = Arc::new(Mutex::new(storage_db.clone()));
+                            }
+                        }
+                        Err(_e) => {}
+                    }
+                }
             }
             "--port" => {
                 port_found = true;
@@ -162,18 +182,43 @@ fn main() {
                             let mut first_line = String::new();
                             let mut bulk_reader = BufReader::new(conn.try_clone().unwrap());
                             bulk_reader.read_line(&mut first_line).unwrap();
+                            let mut rdb_bytes = Vec::new();
                             if first_line.is_empty() {
                                 eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
                             } else {
-                                let rdb = read_db_from_stream(first_line, bulk_reader);
-                                eprintln!("RDB IN MAIN:{:?}", rdb);
-
-                                //l-et mut buf = String::new();
-                                //let r = conn.read_to_string(&mut buf).unwrap();
-                                //eprintln!("AFTER rdb, read:{r}");
+                                rdb_bytes = read_db_from_stream(first_line, bulk_reader);
+                                eprintln!("RDB IN MAIN:{:?}", rdb_bytes);
                             }
+
                             eprintln!("HANDLING MASTER PORT");
-                            master_conn = Some(conn);
+                            {
+                                let i_fields = info_fields.clone();
+                                let m_port = master_port.clone();
+
+                                let use_db = Arc::clone(&new_db);
+                                let b_info = Arc::clone(&broadcast_info);
+
+                                let use_conn = conn
+                                    .try_clone()
+                                    .expect("failed to clone connection to master");
+                                stream_pool.execute(move || {
+                                    let res = handle_master(
+                                        use_conn.try_clone().expect("failed to clone master conn"),
+                                        i_fields,
+                                        b_info,
+                                        &m_port,
+                                        &use_db,
+                                    );
+                                    match res {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            eprintln!("Error handling Master {}", e);
+                                        }
+                                    }
+                                });
+                            }
+
+                            decode_rdb(rdb_bytes);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -199,52 +244,6 @@ fn main() {
 
     let listener = TcpListener::bind(&full_port).unwrap();
     eprintln!("Listening on port:{full_port}");
-
-    let stream_pool = ThreadPool::new(4);
-    let mut new_db = RedisDatabase::new();
-    //if file exists use the first db in the indexing, else use a new db
-    if db_filename.is_some() && dir.is_some() {
-        let file = db_filename.as_ref().unwrap();
-        let directory = dir.as_ref().unwrap();
-        let path = Path::new(directory).join(file);
-
-        match read_rdb_file(path) {
-            Ok(rdb) => {
-                let opt_db = rdb.databases.get(&0u8);
-                if let Some(storage_db) = opt_db {
-                    new_db = storage_db.clone();
-                }
-            }
-            Err(_e) => {}
-        }
-    }
-
-    let new_db = Arc::new(Mutex::new(new_db));
-
-    // start a loop for the master connection
-    if let Some(m_conn) = master_conn {
-        let i_fields = info_fields.clone();
-        let m_port = master_port.clone();
-
-        let use_db = Arc::clone(&new_db);
-        let b_info = Arc::clone(&broadcast_info);
-
-        stream_pool.execute(move || {
-            let res = handle_master(
-                m_conn.try_clone().expect("failed to clone master conn"),
-                i_fields,
-                b_info,
-                &m_port,
-                &use_db,
-            );
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error handling Master {}", e);
-                }
-            }
-        });
-    }
 
     for stream in listener.incoming() {
         match stream {
