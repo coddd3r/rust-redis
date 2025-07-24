@@ -234,7 +234,6 @@ fn main() {
                         handle_client(_stream, dir_arg, db_arg, i_fields, b_info, &m_port, &use_db);
                     match res {
                         Ok(_) => {}
-                        //Ok(ports_returned) => (),
                         Err(e) => {
                             eprintln!("Error handling client {}", e);
                         }
@@ -258,6 +257,9 @@ fn handle_master(
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!("\n\nHANDLING MASTER\n");
+
+    eprintln!("CLIENT HANDLING MASTER , master port:{:?}", master_port);
+    eprintln!("CLIENT HANDLING MASTER , info:{:?}", broadcast_info);
 
     {
         eprintln!("HANDLING HANDSHAKE");
@@ -285,6 +287,7 @@ fn handle_master(
         let mut bulk_reader = BufReader::new(stream.try_clone().unwrap());
         bulk_reader.read_line(&mut first_line).unwrap();
         //let mut rdb_bytes = Vec::new();
+
         if first_line.is_empty() {
             eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
         } else {
@@ -303,24 +306,22 @@ fn handle_master(
     }
 
     loop {
-        eprintln!("CLIENT HANDLING MASTER LOOP, master port:{:?}", master_port);
-        eprintln!("CLIENT HANDLING MASTER LOOP, info:{:?}", broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
         if all_lines.len() <= 1 {
             eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
-            stream.write_all(RESP_OK).unwrap();
+            //stream.write_all(RESP_OK).unwrap();
             continue;
         }
         eprintln!("ALL LINES:{:?}", all_lines);
-
         let cmd = &all_lines[1];
 
         match cmd.to_lowercase().as_str() {
             "ping" => {
                 stream.write_all(b"+PONG\r\n").unwrap();
             }
+
             "echo" => {
                 let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
                 stream.write_all(&resp).unwrap();
@@ -328,20 +329,21 @@ fn handle_master(
 
             "set" => {
                 eprintln!("IN handle master SET");
+
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
-                } else {
-                    if info_fields.get(ROLE).unwrap() == MASTER {
-                        broadcast_commands(all_lines.as_slice(), &broadcast_info);
-                    }
-                    let k = all_lines[3].clone();
-                    let v = all_lines[5].clone();
+                    continue;
+                }
+                if info_fields.get(ROLE).unwrap() == MASTER {
+                    broadcast_commands(all_lines.as_slice(), &broadcast_info);
+                }
+                let k = all_lines[3].clone();
+                let v = all_lines[5].clone();
 
-                    if all_lines.len() > 6 {
-                        handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
-                    } else {
-                        handle_set(k, v, &new_db, None)?;
-                    }
+                if all_lines.len() > 6 {
+                    handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
+                } else {
+                    handle_set(k, v, &new_db, None)?;
                 }
             }
 
@@ -371,7 +373,7 @@ fn handle_client(
     };
 
     loop {
-        eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
+        //eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
@@ -395,8 +397,10 @@ fn handle_client(
 
             "set" => {
                 eprintln!("IN handle client SET");
+
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
+                    continue;
                 }
                 {
                     if info_fields.get(ROLE).unwrap() == MASTER {
@@ -424,6 +428,10 @@ fn handle_client(
              * GET SECTION
              * */
             "get" => {
+                if all_lines.len() <= 3 {
+                    stream.write_all(RESP_NULL)?;
+                    continue;
+                }
                 eprintln!("IN handle client GET");
                 let get_key = &all_lines[3];
                 handle_get(get_key, &mut stream, new_db)?;

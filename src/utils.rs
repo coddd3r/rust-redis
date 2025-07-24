@@ -111,16 +111,23 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
             }
         }
         '$' => {
-            eprintln!("DECODING BULK, READING RDB: {first_line}");
-            let rdb_len = first_line[1..]
-                .trim()
-                .parse::<usize>()
-                .expect("failed to parse rdb length");
+            if ['+', '-', ':']
+                .iter()
+                .any(|e| e == &first_line.chars().nth(1).unwrap())
+            {
+                eprintln!("DECODING BULK, IGNORING: {first_line}");
+            } else {
+                eprintln!("DECODING BULK, READING RDB: {first_line}");
+                let rdb_len = first_line[1..]
+                    .trim()
+                    .parse::<usize>()
+                    .expect("failed to parse rdb length");
 
-            //let rdb_bytes = read_db_from_stream(rdb_len, bulk_reader);
-            //decode_rdb(rdb_bytes);
-            eprintln!("IGNORING RDB IN BULK READER");
-            bulk_reader.consume(rdb_len);
+                //let rdb_bytes = read_db_from_stream(rdb_len, bulk_reader);
+                //decode_rdb(rdb_bytes);
+                eprintln!("IGNORING RDB IN BULK READER");
+                bulk_reader.consume(rdb_len);
+            }
         }
         '+' | '-' | ':' => {
             eprintln!("DECODING BULK, IGNORING: {first_line}");
@@ -276,8 +283,11 @@ pub fn handle_set(
     }
 
     {
+        eprintln!("IN HANDLE SET FUNCTION, BEFORE LOCK");
         let mut lk = new_db.lock().unwrap();
-        lk.insert(k, use_insert);
+        lk.insert(k.clone(), use_insert);
+        let res = lk.get(&k);
+        eprintln!("IN HANDLE SET FUNCTION, AFTER LOCK GET RES: {:?}", res);
     }
     Ok(())
 }
@@ -288,7 +298,9 @@ pub fn handle_get(
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), RdbError> {
     {
+        eprintln!("in handle GET function before lock");
         let mut lk = new_db.lock().expect("failed to lock db in get");
+        eprintln!("in handle GET function locked db:{:?}", lk);
         if let Some(res) = lk.get(&get_key) {
             if res.expires_at.is_some() && res.expires_at.as_ref().unwrap().is_expired() {
                 eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
@@ -299,7 +311,7 @@ pub fn handle_get(
                 stream.write_all(&resp).unwrap();
             }
         } else {
-            eprintln!("IN GET FOUND NOTHING");
+            eprintln!("IN GET FOUND NONE");
             stream.write_all(crate::RESP_NULL).unwrap();
         }
     }
