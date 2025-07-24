@@ -164,7 +164,15 @@ pub fn write_resp_arr(cmd: Vec<&str>) -> Vec<u8> {
         .for_each(|e| full_bytes.extend(get_bulk_string(e)));
     full_bytes
 }
-
+pub fn get_port(stream: &TcpStream) -> Option<String> {
+    if let Ok(peer_addr) = stream.peer_addr() {
+        println!("Accepted connection from: {}", peer_addr);
+        Some(peer_addr.port().to_string())
+    } else {
+        println!("Unable to get peer address.");
+        None
+    }
+}
 //fn handle_set(db: RedisDatabase, key: String, val: RedisValue, exp: Option<Expiration>) {}
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()
