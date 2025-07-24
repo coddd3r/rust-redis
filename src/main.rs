@@ -152,51 +152,24 @@ fn main() {
 
                 if let Some(master) = b.next() {
                     eprintln!("Running at:{full_port} is replica of:{master}");
+
+                    /////////
                     let master_p: Vec<_> = master.split_whitespace().collect();
                     let send_to: String = [master_p[0], ":", master_p[1]].into_iter().collect();
                     master_port = Some(send_to.clone());
                     eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
-                        Ok(mut conn) => {
+                        Ok(conn) => {
                             {
                                 let mut b_lock = broadcast_info.lock().unwrap();
                                 b_lock.add_connection(conn.try_clone().unwrap());
                             }
-                            let buf = write_resp_arr(vec!["PING"]);
-                            conn.write_all(&buf).expect("FAILED TO PING master");
-                            let _ = read_response(&conn, Some(1));
-
-                            let repl_port =
-                                utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
-                            conn.write_all(&repl_port).expect("FAILED to reply master");
-                            let _ = read_response(&conn, Some(2));
-
-                            let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
-                            conn.write_all(&repl_capa).expect("FAILED TO reply master");
-                            let _ = read_response(&conn, Some(3));
-
-                            let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
-                            conn.write_all(&pysnc_resp).expect("Failed to send PSYNC");
-                            let _ = read_response(&conn, Some(4));
-
-                            let mut first_line = String::new();
-                            let mut bulk_reader = BufReader::new(conn.try_clone().unwrap());
-                            bulk_reader.read_line(&mut first_line).unwrap();
-                            let mut rdb_bytes = Vec::new();
-                            if first_line.is_empty() {
-                                eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
-                            } else {
-                                rdb_bytes = read_db_from_stream(first_line, bulk_reader);
-                                eprintln!("RDB IN MAIN:{:?}", rdb_bytes);
-                            }
-
-                            eprintln!("HANDLING MASTER PORT");
                             {
                                 let i_fields = info_fields.clone();
                                 let m_port = master_port.clone();
-
                                 let use_db = Arc::clone(&new_db);
                                 let b_info = Arc::clone(&broadcast_info);
+                                let short_port = short_port.clone();
 
                                 let use_conn = conn
                                     .try_clone()
@@ -207,6 +180,7 @@ fn main() {
                                         i_fields,
                                         b_info,
                                         &m_port,
+                                        &short_port,
                                         &use_db,
                                     );
                                     match res {
@@ -217,8 +191,6 @@ fn main() {
                                     }
                                 });
                             }
-
-                            decode_rdb(rdb_bytes);
                         }
                         Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
                     }
@@ -282,9 +254,48 @@ fn handle_master(
     info_fields: HashMap<String, String>,
     broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
     master_port: &Option<String>,
+    replica_port: &str,
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!("\n\nHANDLING MASTER\n");
+
+    {
+        eprintln!("HANDLING HANDSHAKE");
+        let buf = write_resp_arr(vec!["PING"]);
+        stream.write_all(&buf).expect("FAILED TO PING master");
+        let _ = read_response(&stream, Some(1));
+
+        let repl_port = utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &replica_port);
+        stream
+            .write_all(&repl_port)
+            .expect("FAILED to reply master");
+        let _ = read_response(&stream, Some(2));
+
+        let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
+        stream
+            .write_all(&repl_capa)
+            .expect("FAILED TO reply master");
+        let _ = read_response(&stream, Some(3));
+
+        let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
+        stream.write_all(&pysnc_resp).expect("Failed to send PSYNC");
+        let _ = read_response(&stream, Some(4));
+
+        let mut first_line = String::new();
+        let mut bulk_reader = BufReader::new(stream.try_clone().unwrap());
+        bulk_reader.read_line(&mut first_line).unwrap();
+        let mut rdb_bytes = Vec::new();
+        if first_line.is_empty() {
+            eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
+        } else {
+            eprintln!("IN MAIN READING FROM STREAM WITH SIZE:{first_line}");
+            rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
+            eprintln!("RDB IN MAIN:{:?}", rdb_bytes);
+        }
+
+        decode_rdb(rdb_bytes);
+    }
+
     loop {
         eprintln!("CLIENT HANDLING MASTER LOOP, master port:{:?}", master_port);
         eprintln!("CLIENT HANDLING MASTER LOOP, info:{:?}", broadcast_info);

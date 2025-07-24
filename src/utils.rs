@@ -90,6 +90,7 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
         eprintln!("EMPTY LINE");
         return None;
     }
+    eprintln!("first line NOT empty, {first_line}");
     let first_char = first_line.chars().nth(0).unwrap();
     match first_char {
         '*' => {
@@ -109,19 +110,25 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
                 all_lines.push(my_iter.next()?.unwrap());
             }
         }
-        '+' | '-' | ':' | '$' => {}
+        '$' => {
+            eprintln!("DECODING BULK, READING RDB: {first_line}");
+            let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
+            decode_rdb(rdb_bytes);
+        }
+        '+' | '-' | ':' => {
+            eprintln!("DECODING BULK, IGNORING: {first_line}");
+        }
         _ => {
-            eprintln!("FOUND LENGTH RESPONSE:{first_line}");
-            let rdb = read_db_from_stream(first_line, bulk_reader);
-            eprintln!("RDB IN UTILS:{:?}", rdb);
-            eprintln!("final all lines{:?}", all_lines);
+            eprintln!("\r\nINVALID START OF COMMAND\r\n");
         }
     }
     Some(all_lines)
 }
 
-pub fn read_db_from_stream<R: Read>(first_line: String, mut bulk_reader: R) -> Vec<u8> {
-    let rdb_len = first_line.trim()[1..]
+pub fn read_db_from_stream<R: Read>(first_line: &str, mut bulk_reader: R) -> Vec<u8> {
+    eprintln!("IN FUNCTION GO STREAM SIZE: {first_line}");
+    let rdb_len = first_line
+        .trim()
         .parse::<usize>()
         .expect("failed to parse rdb length");
     let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
