@@ -112,8 +112,15 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
         }
         '$' => {
             eprintln!("DECODING BULK, READING RDB: {first_line}");
-            let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-            decode_rdb(rdb_bytes);
+            let rdb_len = first_line[1..]
+                .trim()
+                .parse::<usize>()
+                .expect("failed to parse rdb length");
+
+            //let rdb_bytes = read_db_from_stream(rdb_len, bulk_reader);
+            //decode_rdb(rdb_bytes);
+            eprintln!("IGNORING RDB IN BULK READER");
+            bulk_reader.consume(rdb_len);
         }
         '+' | '-' | ':' => {
             eprintln!("DECODING BULK, IGNORING: {first_line}");
@@ -125,42 +132,38 @@ pub fn decode_bulk_string(stream: &TcpStream) -> Option<Vec<String>> {
     Some(all_lines)
 }
 
-pub fn read_db_from_stream<R: Read>(first_line: &str, mut bulk_reader: R) -> Vec<u8> {
-    eprintln!("IN FUNCTION GO STREAM SIZE: {first_line}");
-    let rdb_len = first_line
-        .trim()
-        .parse::<usize>()
-        .expect("failed to parse rdb length");
-    let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
-    eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
-    bulk_reader
-        .read_exact(&mut received_rdb)
-        //.read_until(0xFF, &mut received_rdb)
-        .expect("FAILED TO READ RDB BYTES");
-
-    received_rdb
-    //eprintln!("read from stream num bytes:{num_bytes_read}");
-}
-
-pub fn decode_rdb(received_rdb: Vec<u8>) {
-    eprintln!("DECODING RDB BYTES RECEIVED");
-    eprintln!(
-        "read from stream num rdb file:{:?}, length:{:?}",
-        received_rdb,
-        received_rdb.len()
-    );
-    print_hex_dump(&received_rdb);
-
-    let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
-
-    let mut file = File::create(&received_rdb_path).unwrap();
-    file.write_all(&received_rdb)
-        .expect("failed to write receive rdb to file");
-    eprintln!("WRPTE RESPONSE TO FILE");
-    let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
-        .expect("failed tp read response rdb from file");
-    eprintln!("RECEIVED RDB:{:?}", final_rdb);
-}
+//pub fn read_db_from_stream<R: Read>(rdb_len: usize, mut bulk_reader: R) -> Vec<u8> {
+//    //eprintln!("IN FUNCTION GO STREAM SIZE: {first_line}");
+//    let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+//    eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());
+//    bulk_reader
+//        .read_exact(&mut received_rdb)
+//        //.read_until(0xFF, &mut received_rdb)
+//        .expect("FAILED TO READ RDB BYTES");
+//
+//    received_rdb
+//    //eprintln!("read from stream num bytes:{num_bytes_read}");
+//}
+//
+//pub fn decode_rdb(received_rdb: Vec<u8>) {
+//    eprintln!("DECODING RDB BYTES RECEIVED");
+//    eprintln!(
+//        "read from stream num rdb file:{:?}, length:{:?}",
+//        received_rdb,
+//        received_rdb.len()
+//    );
+//    print_hex_dump(&received_rdb);
+//
+//    let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
+//
+//    let mut file = File::create(&received_rdb_path).unwrap();
+//    file.write_all(&received_rdb)
+//        .expect("failed to write receive rdb to file");
+//    eprintln!("WRPTE RESPONSE TO FILE");
+//    let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+//        .expect("failed tp read response rdb from file");
+//    eprintln!("RECEIVED RDB:{:?}", final_rdb);
+//}
 
 pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
     eprintln!("reading response from:{:?}", st);

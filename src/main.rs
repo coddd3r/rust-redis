@@ -22,8 +22,8 @@ use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
 use crate::utils::{
-    broadcast_commands, decode_bulk_string, decode_rdb, get_bulk_string, get_port, handle_get,
-    handle_set, read_db_from_stream, read_response, write_resp_arr,
+    broadcast_commands, decode_bulk_string, get_bulk_string, get_port, handle_get, handle_set,
+    read_response, write_resp_arr,
 };
 mod utils;
 
@@ -284,16 +284,22 @@ fn handle_master(
         let mut first_line = String::new();
         let mut bulk_reader = BufReader::new(stream.try_clone().unwrap());
         bulk_reader.read_line(&mut first_line).unwrap();
-        let mut rdb_bytes = Vec::new();
+        //let mut rdb_bytes = Vec::new();
         if first_line.is_empty() {
             eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
         } else {
-            eprintln!("IN MAIN READING FROM STREAM WITH SIZE:{first_line}");
-            rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-            eprintln!("RDB IN MAIN:{:?}", rdb_bytes);
-        }
+            eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
+            let rdb_len = first_line[1..]
+                .trim()
+                .parse::<usize>()
+                .expect("failed to parse rdb length");
 
-        decode_rdb(rdb_bytes);
+            //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
+            eprintln!("IGNORING RDB BYTES");
+            bulk_reader.consume(rdb_len);
+            //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
+            //decode_rdb(rdb_bytes);
+        }
     }
 
     loop {
