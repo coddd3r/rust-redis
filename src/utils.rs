@@ -156,10 +156,7 @@ pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
     eprintln!("in read_response before read line:{:?}", buf_reader);
     let _ = buf_reader.read_line(&mut use_buf);
 
-    if let Some(x) = n {
-        eprintln!("{x}th handshake done, response:{}", use_buf);
-    }
-    eprintln!("finished reading response from stream");
+    eprintln!("finished reading response from stream: {use_buf}");
     use_buf
 }
 
@@ -197,9 +194,7 @@ pub fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
         let curr_info = b_info.lock().unwrap();
         (curr_info.connections.clone(), curr_info.ports.clone())
     };
-    //conn.iter().enumerate().for_each(|(i, conn)| {
-    // let mut full_port = String::from("127.0.0.1:");
-    // full_port.push_str(p);
+
     for (i, conn) in conn.iter().enumerate() {
         let mut c = conn.stream.lock().unwrap();
         eprintln!(
@@ -213,9 +208,7 @@ pub fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
         c.write_all(&broadcast_bytes)
             .expect("FAILED TO PING master");
         eprintln!("wrote broadcst to port");
-        //confirm listening on to main node
     }
-    //});
     eprintln!("after clients lopp in broadcast");
 }
 
@@ -280,3 +273,5 @@ pub fn handle_set(
 //    x.push("\r\n".as_bytes());
 //    x
 //}
+//let re = r"$88\r\nREDIS0011\u{fa}\tredis-ver\x057.2.0\u{fa}\nredis-bits\u{c0}@\u{fa}\u{05}ctime\u{c2}m\b\u{bc}e\u{fa}\bused-mem°\u{c4}\x10\x00\u{fa}\baof-base\u{c0}\x00\u{ff}\u{f0}n;\u{fe}\u{c0}\u{ff}Z\u{a2}".as_bytes();
+//                        let res = r"REDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2".as_bytes();

@@ -11,7 +11,7 @@ use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
 
-use codecrafters_redis::print_hex::create_dummy_rdb;
+use codecrafters_redis::print_hex::{create_dummy_rdb, print_hex_dump};
 use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
@@ -607,11 +607,15 @@ fn handle_client(
                     s.write_all(&resync_response)?;
 
                     eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
-                    let dummy_rdb_path = env::current_dir().unwrap().join("dump-dummy.rdb");
+                    //let dummy_rdb_path = env::current_dir().unwrap().join("empty.rdb");
+                    let dummy_rdb_path = env::current_dir().unwrap().join("dump_dummy.rdb");
                     create_dummy_rdb(&dummy_rdb_path.as_path()).expect("FAILED TO MAKE DUMMY RDB");
                     if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
-                        eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                        eprintln!("IN MASTER SENDING RB");
                         //stream
+                        eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                        print_hex_dump(&response_rdb_bytes);
+
                         s.write_all(
                             &[
                                 b"$",

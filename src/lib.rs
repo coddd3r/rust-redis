@@ -23,18 +23,12 @@ pub fn read_rdb_file<P: AsRef<Path>>(path: P) -> Result<RdbFile> {
 /// Reads RDB data from a reader
 pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
     let version = header::read_header(reader)?;
-    let metadata = metadata::read_metada(reader)?;
+    let (metadata, last_byte) = metadata::read_metada(reader)?;
     let mut all_databases = HashMap::new();
 
     // read while there are databse subsections(which are dbs themselves)
     loop {
-        let mut buf = [0u8; 1];
-        //if no more bytes, EOF reached
-        if reader.read_exact(&mut buf).is_err() {
-            break;
-        }
-        eprintln!("IN DB section loop curr val:{:#04X?}", buf[0]);
-        match buf[0] {
+        match last_byte[0] {
             // if a db subsection is found
             database::DB_SELECTOR => {
                 eprintln!("FOUND DB selector");
@@ -51,25 +45,11 @@ pub fn read_rdb<R: Read>(reader: &mut R) -> Result<RdbFile> {
                     break;
                 };
             }
-            database::DB_INDEX_0 => {
-                eprintln!("FOUND DB index 0 0x00");
-                //metadata consumes the FE, so we just start from index num
-                let db_index = buf[0];
-
-                let db = database::read_db(reader)?;
-                all_databases.insert(db_index, db.0);
-
-                //if reached_eof returns true
-                if db.1 {
-                    break;
-                }
-            }
-
             database::EOF => break,
             // anything else is invalid
             _ => {
                 eprintln!("DATABSE LOOP ERROR UNRECOGNIZED BYTES AT BEGINNIN OF A DB SECTION");
-                return Err(RdbError::InvalidValueType(buf[0]));
+                return Err(RdbError::InvalidValueType(last_byte[0]));
             }
         }
     }

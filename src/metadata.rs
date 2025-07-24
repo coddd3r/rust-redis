@@ -15,7 +15,8 @@ use std::io::{Read, Write};
 const METADATA_START: u8 = 0xFA;
 
 /// Reads metadata section from RDB file
-pub fn read_metada<R: Read>(reader: &mut R) -> Result<HashMap<String, String>> {
+pub fn read_metada<R: Read>(reader: &mut R) -> Result<(HashMap<String, String>, [u8; 1])> {
+    eprintln!("IN METADATA");
     //eprintln!("READING METADATA HEX");
     let mut metadata = HashMap::new();
     // while there are still metadata sections
@@ -27,9 +28,9 @@ pub fn read_metada<R: Read>(reader: &mut R) -> Result<HashMap<String, String>> {
         // reaches section end and return read buf, simulated peek
         if buf[0] != METADATA_START {
             // Not a metadata entry, push the byte back (simulated by peeking)
-            //eprintln!("before quitting metadata loop:got:{:X?}", buf[0]);
-            //eprintln!("final metadata: {:?}", &metadata);
-            return Ok(metadata);
+            eprintln!("before quitting metadata loop:got:{:X?}", buf[0]);
+            eprintln!("final metadata: {:?}", &metadata);
+            return Ok((metadata, buf));
         }
 
         let k = read_string(reader)?;
