@@ -156,7 +156,10 @@ pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
     eprintln!("in read_response before read line:{:?}", buf_reader);
     let _ = buf_reader.read_line(&mut use_buf);
 
-    eprintln!("finished reading response from stream: {use_buf}");
+    if let Some(r) = n {
+        eprintln!("{r}th");
+    }
+    eprintln!(" finished reading response from stream: {use_buf}");
     use_buf
 }
 

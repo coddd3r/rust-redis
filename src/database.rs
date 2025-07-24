@@ -19,7 +19,6 @@ use crate::types::{Expiration, RedisDatabase, RedisValue};
 use std::io::{Read, Write};
 
 pub const DB_SELECTOR: u8 = 0xFE;
-pub const DB_INDEX_0: u8 = 0x00;
 pub const EXPIRY_SECONDS: u8 = 0xFD;
 pub const EXPIRY_MILLISECONDS: u8 = 0xFC;
 pub const RESIZEDB: u8 = 0xFB;

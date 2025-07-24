@@ -36,6 +36,7 @@ const REPL_CONF: &str = "REPLCONF";
 const LISTENING_PORT: &str = "listening-port";
 const PSYNC: &str = "PSYNC";
 const FULLRESYNC: &str = "FULLRESYNC";
+const DEFAULT_PORT: &str = "6379";
 
 const RESP_OK: &[u8; 5] = b"+OK\r\n";
 const RESP_NULL: &[u8; 5] = b"$-1\r\n";
@@ -122,7 +123,7 @@ fn main() {
                     full_port.push_str(&p);
                     short_port = p;
                 } else {
-                    full_port.push_str("6379");
+                    full_port.push_str(DEFAULT_PORT);
                 }
             }
             "--replicaof" => {
@@ -130,7 +131,7 @@ fn main() {
                 *curr_role = SLAVE.to_string();
 
                 if let Some(master) = b.next() {
-                    eprintln!("is replica of:{master}");
+                    eprintln!("Running at:{full_port} is replica of:{master}");
                     let master_p: Vec<_> = master.split_whitespace().collect();
                     let send_to: String = [master_p[0], ":", master_p[1]].into_iter().collect();
                     master_port = Some(send_to.clone());
@@ -193,7 +194,7 @@ fn main() {
     }
 
     if !port_found {
-        full_port.push_str("6379");
+        full_port.push_str(DEFAULT_PORT);
     }
 
     let listener = TcpListener::bind(&full_port).unwrap();
@@ -229,7 +230,13 @@ fn main() {
         let b_info = Arc::clone(&broadcast_info);
 
         stream_pool.execute(move || {
-            let res = handle_master(m_conn, i_fields, b_info, &m_port, &use_db);
+            let res = handle_master(
+                m_conn.try_clone().expect("failed to clone master conn"),
+                i_fields,
+                b_info,
+                &m_port,
+                &use_db,
+            );
             match res {
                 Ok(_) => {}
                 Err(e) => {
@@ -281,7 +288,6 @@ fn handle_master(
     eprintln!("\n\nHANDLING MASTER\n");
     loop {
         eprintln!("IN MASTER LOOP, master port:{:?}", master_port);
-        eprintln!("LOOP broadcast:{:?}", &broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
@@ -304,16 +310,20 @@ fn handle_master(
             }
 
             "set" => {
-                if info_fields.get(ROLE).unwrap() == MASTER {
-                    broadcast_commands(all_lines.as_slice(), &broadcast_info);
-                }
-                let k = all_lines[3].clone();
-                let v = all_lines[5].clone();
-
-                if all_lines.len() > 6 {
-                    handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
+                if all_lines.len() < 6 {
+                    stream.write_all(RESP_NULL)?;
                 } else {
-                    handle_set(k, v, &new_db, None)?;
+                    if info_fields.get(ROLE).unwrap() == MASTER {
+                        broadcast_commands(all_lines.as_slice(), &broadcast_info);
+                    }
+                    let k = all_lines[3].clone();
+                    let v = all_lines[5].clone();
+
+                    if all_lines.len() > 6 {
+                        handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
+                    } else {
+                        handle_set(k, v, &new_db, None)?;
+                    }
                 }
             }
             _ => unreachable!(),
@@ -362,24 +372,29 @@ fn handle_client(
             }
 
             "set" => {
-                if info_fields.get(ROLE).unwrap() == MASTER {
-                    broadcast_commands(all_lines.as_slice(), &broadcast_info);
+                if all_lines.len() < 6 {
+                    stream.write_all(RESP_NULL)?;
                 }
-                let k = all_lines[3].clone();
-                let v = all_lines[5].clone();
+                {
+                    if info_fields.get(ROLE).unwrap() == MASTER {
+                        broadcast_commands(all_lines.as_slice(), &broadcast_info);
+                    }
+                    let k = all_lines[3].clone();
+                    let v = all_lines[5].clone();
 
-                if all_lines.len() > 6 {
-                    let r = handle_set(k, v, new_db, Some((&all_lines[7], &all_lines[9])));
-                    if r.is_ok() {
-                        stream.write_all(RESP_OK)?;
+                    if all_lines.len() > 6 {
+                        let r = handle_set(k, v, new_db, Some((&all_lines[7], &all_lines[9])));
+                        if r.is_ok() {
+                            stream.write_all(RESP_OK)?;
+                        }
+                    } else {
+                        let r = handle_set(k, v, new_db, None);
+                        if r.is_ok() {
+                            stream.write_all(RESP_OK)?;
+                        }
                     }
-                } else {
-                    let r = handle_set(k, v, new_db, None);
-                    if r.is_ok() {
-                        stream.write_all(RESP_OK)?;
-                    }
+                    eprintln!("MASTER FINISHED SET");
                 }
-                eprintln!("MASTER FINISHED SET");
             }
 
             /*
