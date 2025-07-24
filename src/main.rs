@@ -375,8 +375,12 @@ fn handle_client(
                         stream.write_all(RESP_OK)?;
                     }
                 } else {
-                    handle_set(k, v, new_db, None)?;
+                    let r = handle_set(k, v, new_db, None);
+                    if r.is_ok() {
+                        stream.write_all(RESP_OK)?;
+                    }
                 }
+                eprintln!("MASTER FINISHED SET");
             }
 
             /*
