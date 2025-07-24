@@ -265,6 +265,30 @@ pub fn handle_set(
     }
     Ok(())
 }
+
+pub fn handle_get(
+    get_key: &str,
+    stream: &mut TcpStream,
+    new_db: &Arc<Mutex<RedisDatabase>>,
+) -> Result<(), RdbError> {
+    {
+        let mut lk = new_db.lock().expect("failed to lock db in get");
+        if let Some(res) = lk.get(&get_key) {
+            if res.expires_at.is_some() && res.expires_at.as_ref().unwrap().is_expired() {
+                eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
+                lk.data.remove(get_key);
+                stream.write_all(crate::RESP_NULL).unwrap();
+            } else {
+                let resp = crate::utils::get_bulk_string(&res.value);
+                stream.write_all(&resp).unwrap();
+            }
+        } else {
+            eprintln!("IN GET FOUND NOTHING");
+            stream.write_all(crate::RESP_NULL).unwrap();
+        }
+    }
+    Ok(())
+}
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()
 //}

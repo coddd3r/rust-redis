@@ -22,7 +22,7 @@ use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
 use crate::utils::{
-    broadcast_commands, decode_bulk_string, get_bulk_string, get_port, handle_set,
+    broadcast_commands, decode_bulk_string, get_bulk_string, get_port, handle_get, handle_set,
     read_db_from_stream, read_response, write_resp_arr,
 };
 mod utils;
@@ -410,25 +410,7 @@ fn handle_client(
             "get" => {
                 eprintln!("IN handle client GET");
                 let get_key = &all_lines[3];
-
-                {
-                    let mut lk = new_db.lock().expect("failed to lock db in get");
-                    if let Some(res) = lk.get(&get_key) {
-                        if res.expires_at.is_none()
-                            || (res.expires_at.is_some()
-                                && !res.expires_at.as_ref().unwrap().is_expired())
-                        {
-                            let resp = utils::get_bulk_string(&res.value);
-                            stream.write_all(&resp).unwrap();
-                        } else {
-                            lk.data.remove(get_key);
-                            stream.write_all(RESP_NULL).unwrap();
-                        }
-                    } else {
-                        //eprintln!("IN GET OUND NOTHING");
-                        stream.write_all(RESP_NULL).unwrap();
-                    }
-                }
+                handle_get(get_key, &mut stream, new_db)?;
             }
 
             /*
