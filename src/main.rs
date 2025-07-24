@@ -91,11 +91,11 @@ fn main() {
     let id = utils::random_id_gen();
     let mut info_fields: HashMap<String, String> = HashMap::new();
     info_fields.insert(String::from(ROLE), MASTER.to_string());
-    eprintln!("ID:{:?}", id);
+    //eprintln!("ID:{:?}", id);
     //info_fields.insert("id", id);
 
     let arg_list = std::env::args();
-    //eprintln!("ARGS:{:?}", &arg_list);
+    ////eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
     let mut full_port = String::from("127.0.0.1:");
@@ -116,11 +116,11 @@ fn main() {
         match a.as_str() {
             "--dir" => {
                 dir = b.next();
-                //eprintln!("GOT DIR");
+                ////eprintln!("GOT DIR");
             }
             "--dbfilename" => {
                 db_filename = b.next();
-                //eprintln!("GOT ILE");
+                ////eprintln!("GOT ILE");
                 if db_filename.is_some() && dir.is_some() {
                     let file = db_filename.as_ref().unwrap();
                     let directory = dir.as_ref().unwrap();
@@ -151,13 +151,13 @@ fn main() {
                 *curr_role = SLAVE.to_string();
 
                 if let Some(master) = b.next() {
-                    eprintln!("Running at:{full_port} is replica of:{master}");
+                    //eprintln!("Running at:{full_port} is replica of:{master}");
 
                     /////////
                     let master_p: Vec<_> = master.split_whitespace().collect();
                     let send_to: String = [master_p[0], ":", master_p[1]].into_iter().collect();
                     master_port = Some(send_to.clone());
-                    eprintln!("connecting to master on {send_to}");
+                    //eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(conn) => {
                             {
@@ -186,13 +186,15 @@ fn main() {
                                     match res {
                                         Ok(_) => {}
                                         Err(e) => {
-                                            eprintln!("Error handling Master {}", e);
+                                            //eprintln!("Error handling Master {}", e);
                                         }
                                     }
                                 });
                             }
                         }
-                        Err(e) => eprintln!("FAILED CONNECTION to master{:?}", e),
+                        Err(e) => {
+                            //eprintln!("FAILED CONNECTION to master{:?}", e),
+                        }
                     }
                 }
             }
@@ -215,12 +217,12 @@ fn main() {
     }
 
     let listener = TcpListener::bind(&full_port).unwrap();
-    eprintln!("Listening on port:{full_port}");
+    //eprintln!("Listening on port:{full_port}");
 
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
-                println!("accepted new connection");
+                //println!("accepted new connection");
                 let dir_arg = dir.clone();
                 let db_arg = db_filename.clone();
                 let i_fields = info_fields.clone();
@@ -235,7 +237,7 @@ fn main() {
                     match res {
                         Ok(_) => {}
                         Err(e) => {
-                            eprintln!("Error handling client {}", e);
+                            //eprintln!("Error handling client {}", e);
                         }
                     }
                 });
@@ -256,13 +258,13 @@ fn handle_master(
     replica_port: &str,
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
-    eprintln!("\n\nHANDLING MASTER\n");
+    //eprintln!("\n\nHANDLING MASTER\n");
 
-    eprintln!("CLIENT HANDLING MASTER , master port:{:?}", master_port);
-    eprintln!("CLIENT HANDLING MASTER , info:{:?}", broadcast_info);
+    //eprintln!("CLIENT HANDLING MASTER , master port:{:?}", master_port);
+    //eprintln!("CLIENT HANDLING MASTER , info:{:?}", broadcast_info);
 
     {
-        eprintln!("HANDLING HANDSHAKE");
+        //eprintln!("HANDLING HANDSHAKE");
         let buf = write_resp_arr(vec!["PING"]);
         stream.write_all(&buf).expect("FAILED TO PING master");
         let _ = read_response(&stream, Some(1));
@@ -289,16 +291,16 @@ fn handle_master(
         //let mut rdb_bytes = Vec::new();
 
         if first_line.is_empty() {
-            eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
+            //eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
         } else {
-            //eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
+            ////eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
             let rdb_len = first_line[1..]
                 .trim()
                 .parse::<usize>()
                 .expect("failed to parse rdb length");
 
             //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-            //eprintln!("IGNORING RDB BYTES");
+            ////eprintln!("IGNORING RDB BYTES");
             //bulk_reader.consume(rdb_len);
 
             let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
@@ -307,7 +309,7 @@ fn handle_master(
                 .read_exact(&mut received_rdb)
                 .expect("FAILE TO READ RDB IN HANDSHAKE");
 
-            //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
+            ////eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
             //decode_rdb(rdb_bytes);
         }
     }
@@ -317,11 +319,11 @@ fn handle_master(
             break;
         };
         if all_lines.len() <= 1 {
-            eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+            //eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
             //stream.write_all(RESP_OK).unwrap();
             continue;
         }
-        eprintln!("ALL LINES:{:?}", all_lines);
+        //eprintln!("ALL LINES:{:?}", all_lines);
         let cmd = &all_lines[1];
 
         match cmd.to_lowercase().as_str() {
@@ -335,7 +337,7 @@ fn handle_master(
             }
 
             "set" => {
-                eprintln!("IN handle master SET");
+                //eprintln!("IN handle master SET");
 
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
@@ -355,7 +357,7 @@ fn handle_master(
             }
 
             "command" => {
-                eprintln!("INITIATION, no command");
+                //eprintln!("INITIATION, no command");
             }
 
             _ => unreachable!(),
@@ -376,20 +378,20 @@ fn handle_client(
 ) -> Result<(), Box<dyn Error>> {
     let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
     if sent_by_main {
-        eprintln!("\n\n\nSENT BY MAIN\n\n");
+        //eprintln!("\n\n\nSENT BY MAIN\n\n");
     };
 
     loop {
-        //eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
+        ////eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
         if all_lines.len() <= 1 {
-            eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+            //eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
             stream.write_all(RESP_OK).unwrap();
             continue;
         }
-        eprintln!("ALL LINES:{:?}", all_lines);
+        //eprintln!("ALL LINES:{:?}", all_lines);
 
         let cmd = &all_lines[1];
 
@@ -403,7 +405,7 @@ fn handle_client(
             }
 
             "set" => {
-                eprintln!("IN handle client SET");
+                //eprintln!("IN handle client SET");
 
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
@@ -427,7 +429,7 @@ fn handle_client(
                             stream.write_all(RESP_OK)?;
                         }
                     }
-                    eprintln!("MASTER FINISHED SET");
+                    //eprintln!("MASTER FINISHED SET");
                 }
             }
 
@@ -439,7 +441,7 @@ fn handle_client(
                     stream.write_all(RESP_NULL)?;
                     continue;
                 }
-                eprintln!("IN handle client GET");
+                //eprintln!("IN handle client GET");
                 let get_key = &all_lines[3];
                 handle_get(get_key, &mut stream, new_db)?;
             }
@@ -473,11 +475,11 @@ fn handle_client(
                             }
                         }
                         _ => {
-                            eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+                            //eprintln!("UNRECOGNIZED GET CONFIG FIELD");
                         }
                     },
                     _ => {
-                        eprintln!("UNRECOGNIZED CONFIG COMMAND")
+                        //eprintln!("UNRECOGNIZED CONFIG COMMAND")
                     }
                 }
             }
@@ -486,24 +488,24 @@ fn handle_client(
             "keys" => {
                 let path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
-                    //eprintln!("OUND FILE");
+                    ////eprintln!("OUND FILE");
                     let file = db_filename.as_ref().unwrap();
 
                     let directory = dir.as_ref().unwrap();
-                    //eprintln!("OUND DIR");
+                    ////eprintln!("OUND DIR");
                     // write current hashmap to rdb
                     path = Path::new(directory).join(file);
                 } else {
                     path = env::current_dir().unwrap().join("dump.rdb");
                 }
 
-                //eprintln!("USING PATH:{:?}", &path);
+                ////eprintln!("USING PATH:{:?}", &path);
 
                 let mut file = File::open(&path)?;
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer)?;
 
-                //eprintln!("Printin rdb as HEX");
+                ////eprintln!("Printin rdb as HEX");
                 print_hex::print_hex_dump(&buffer);
                 match read_rdb_file(path) {
                     Ok(rdb) => {
@@ -518,7 +520,7 @@ fn handle_client(
                         });
                     }
                     Err(_e) => {
-                        //eprintln!("failed to read from rdb file {:?}", e);
+                        ////eprintln!("failed to read from rdb file {:?}", e);
                         stream.write_all(RESP_NULL).unwrap();
                     }
                 }
@@ -526,13 +528,13 @@ fn handle_client(
 
             //SAVE
             "save" => {
-                //eprintln!("IN SAVE");
+                ////eprintln!("IN SAVE");
                 let mut path: PathBuf;
                 if db_filename.is_some() && dir.is_some() {
                     // create a new file path then write current hashmap to rdb
                     path = Path::new(dir.as_ref().unwrap()).join(db_filename.as_ref().unwrap());
 
-                    //eprintln!("Path:{:?}", &path);
+                    ////eprintln!("Path:{:?}", &path);
                     let mut new_rdb = RdbFile {
                         version: "0011".to_string(),
                         metadata: HashMap::new(),
@@ -542,18 +544,18 @@ fn handle_client(
                     new_rdb
                         .metadata
                         .insert("redis-version".to_string(), "6.0.16".to_string());
-                    //eprintln!("IN Save, using map {:?}", new_db);
+                    ////eprintln!("IN Save, using map {:?}", new_db);
                     {
                         let lk = new_db.lock().expect("failed to lock db in save");
                         new_rdb.databases.insert(0, lk.clone().try_into()?);
-                        //eprintln!("Creating a new rdb with {:?}", new_rdb);
+                        ////eprintln!("Creating a new rdb with {:?}", new_rdb);
                     }
                     let _ = write_rdb_file(path, &new_rdb);
 
-                    //eprintln!("after SAVE writing to file");
+                    ////eprintln!("after SAVE writing to file");
                     stream.write_all(RESP_OK)?;
                 } else {
-                    //eprintln!("Creating DUMMY in curr dir");
+                    ////eprintln!("Creating DUMMY in curr dir");
                     path = env::current_dir().unwrap();
                     path.push("dump.rdb");
                     print_hex::create_dummy_rdb(&path)?;
@@ -565,7 +567,7 @@ fn handle_client(
             //INFO
             "info" => {
                 //if there is an extra key arg
-                eprintln!("IN INFO SECTION");
+                //eprintln!("IN INFO SECTION");
                 if all_lines.len() > 5 {
                     let info_key = &all_lines[5];
                     let mut use_resp = String::new();
@@ -583,10 +585,10 @@ fn handle_client(
                         }
                         _ => {}
                     }
-                    eprintln!("INFO RESPONSE:{:?}", use_resp);
+                    //eprintln!("INFO RESPONSE:{:?}", use_resp);
                     stream.write_all(&utils::get_bulk_string(&use_resp))?;
                 } else {
-                    eprintln!("IN INFO ELSE");
+                    //eprintln!("IN INFO ELSE");
                     let mut use_val = String::new();
 
                     info_fields
@@ -594,25 +596,25 @@ fn handle_client(
                         .for_each(|(k, v)| use_val.extend([k, ":", v, "\r\n"]));
                     // remove the last CRLF
                     let info_res = utils::get_bulk_string(&use_val[..use_val.len() - 2]);
-                    eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
+                    //eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
                     stream.write_all(&info_res)?;
                 }
-                eprintln!("AFTER INFO SECTION");
+                //eprintln!("AFTER INFO SECTION");
             }
 
             //REPL
             "replconf" => {
-                eprintln!("in repl conf alllines:{:?}", all_lines);
+                //eprintln!("in repl conf alllines:{:?}", all_lines);
                 let is_listener = all_lines.iter().any(|e| e == LISTENING_PORT);
                 if is_listener {
                     let mut lk = broadcast_info.lock().unwrap();
                     // lk.ports.push(String::from("1-standin"));
                     lk.ports.push(all_lines[5].clone());
                 }
-                eprintln!("is LISTENER handshake?:{is_listener}");
-                eprintln!("after repl pushing ports:{:?}", broadcast_info);
+                //eprintln!("is LISTENER handshake?:{is_listener}");
+                //eprintln!("after repl pushing ports:{:?}", broadcast_info);
                 stream.write_all(RESP_OK)?;
-                eprintln!("WROTE ok to replconf");
+                //eprintln!("WROTE ok to replconf");
             }
 
             //PSYNC
@@ -638,17 +640,17 @@ fn handle_client(
                     let mut lk = broadcast_info.lock().unwrap();
                     let mut s = lk.connections.last_mut().unwrap().stream.lock().unwrap();
                     //stream.write_all(&resync_response)?;
-                    eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
+                    //eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
                     s.write_all(&resync_response)?;
 
-                    eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
+                    //eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
                     //let dummy_rdb_path = env::current_dir().unwrap().join("empty.rdb");
                     let dummy_rdb_path = env::current_dir().unwrap().join("dump_dummy.rdb");
                     create_dummy_rdb(&dummy_rdb_path.as_path()).expect("FAILED TO MAKE DUMMY RDB");
                     if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
-                        eprintln!("IN MASTER SENDING RB");
+                        //eprintln!("IN MASTER SENDING RB");
                         //stream
-                        eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                        //eprintln!("writing rdb len {}", response_rdb_bytes.len());
                         print_hex_dump(&response_rdb_bytes);
 
                         s.write_all(
@@ -671,7 +673,7 @@ fn handle_client(
             }
 
             "command" => {
-                eprintln!("INITIATION, no command");
+                //eprintln!("INITIATION, no command");
                 return Ok(());
             }
 
