@@ -141,11 +141,10 @@ fn main() {
                                 let mut b_lock = broadcast_info.lock().unwrap();
                                 b_lock.add_connection(conn.try_clone().unwrap());
                             }
-                            //let buf = b"*1\r\n$4\r\nPING\r\n";
                             let buf = write_resp_arr(vec!["PING"]);
                             conn.write_all(&buf).expect("FAILED TO PING master");
-                            //confirm listening on to main node
                             let _ = read_response(&conn, Some(1));
+
                             let repl_port =
                                 utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &short_port);
                             conn.write_all(&repl_port).expect("FAILED to reply master");

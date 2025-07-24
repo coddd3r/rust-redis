@@ -1,4 +1,5 @@
 use crate::BroadCastInfo;
+use codecrafters_redis::print_hex::print_hex_dump;
 use codecrafters_redis::{
     print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
     RedisValue,
@@ -136,6 +137,7 @@ pub fn read_db_from_stream<R: Read>(first_line: String, mut bulk_reader: R) -> R
         received_rdb,
         received_rdb.len()
     );
+    print_hex_dump(&received_rdb);
 
     let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
 
