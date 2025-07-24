@@ -287,7 +287,8 @@ fn handle_master(
 ) -> Result<(), Box<dyn Error>> {
     eprintln!("\n\nHANDLING MASTER\n");
     loop {
-        eprintln!("IN MASTER LOOP, master port:{:?}", master_port);
+        eprintln!("CLIENT HANDLING MASTER LOOP, master port:{:?}", master_port);
+        eprintln!("CLIENT HANDLING MASTER LOOP, info:{:?}", broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
@@ -310,6 +311,7 @@ fn handle_master(
             }
 
             "set" => {
+                eprintln!("IN handle master SET");
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
                 } else {
@@ -326,6 +328,11 @@ fn handle_master(
                     }
                 }
             }
+
+            "command" => {
+                eprintln!("INITIATION, no command");
+            }
+
             _ => unreachable!(),
         }
     }
@@ -343,13 +350,12 @@ fn handle_client(
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
     let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    eprintln!("MASTER PORT IN CLIENT???:{:?}", master_port);
     if sent_by_main {
         eprintln!("\n\n\nSENT BY MAIN\n\n");
     };
 
     loop {
-        eprintln!("LOOP broadcast:{:?}", &broadcast_info);
+        eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
         let Some(all_lines) = utils::decode_bulk_string(&stream) else {
             break;
         };
@@ -372,6 +378,7 @@ fn handle_client(
             }
 
             "set" => {
+                eprintln!("IN handle client SET");
                 if all_lines.len() < 6 {
                     stream.write_all(RESP_NULL)?;
                 }
@@ -401,7 +408,7 @@ fn handle_client(
              * GET SECTION
              * */
             "get" => {
-                //eprintln!("IN GET");
+                eprintln!("IN handle client GET");
                 let get_key = &all_lines[3];
 
                 {
@@ -648,6 +655,11 @@ fn handle_client(
                             .expect("failed to write rdb bytes in response to hadnshake");
                     };
                 }
+            }
+
+            "command" => {
+                eprintln!("INITIATION, no command");
+                return Ok(());
             }
 
             _unrecognized_cmd => {
