@@ -17,6 +17,7 @@ use codecrafters_redis::{
     RedisValue,
 };
 
+//mod client_handler;
 mod resp_parser;
 mod threadpool;
 mod utils;
@@ -24,10 +25,8 @@ mod utils;
 use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
-use crate::utils::{
-    config_response, decode_bulk_string, get_bulk_string, get_port, handle_get, handle_set,
-    read_response, write_resp_arr,
-};
+//use crate::utils::{config_response, decode_bulk_string, get_bulk_string, handle_get, handle_set};
+use crate::utils::handle_set;
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
 
@@ -66,7 +65,7 @@ fn main() {
     //info_fields.insert("id", id);
 
     let arg_list = std::env::args();
-    //eprintln!("ARGS:{:?}", &arg_list);
+    eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
     let mut full_port = String::from("127.0.0.1:");
@@ -87,11 +86,11 @@ fn main() {
         match a.as_str() {
             "--dir" => {
                 dir = b.next();
-                //eprintln!("GOT DIR");
+                eprintln!("GOT DIR");
             }
             "--dbfilename" => {
                 db_filename = b.next();
-                //eprintln!("GOT ILE");
+                eprintln!("GOT ILE");
                 if db_filename.is_some() && dir.is_some() {
                     let file = db_filename.as_ref().unwrap();
                     let directory = dir.as_ref().unwrap();
@@ -131,9 +130,10 @@ fn main() {
                     eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(conn) => {
+                            let s = Arc::new(Mutex::new(conn));
                             {
                                 let mut b_lock = broadcast_info.lock().unwrap();
-                                b_lock.add_connection(conn.try_clone().unwrap());
+                                b_lock.add_connection(Arc::clone(&s));
                             }
                             {
                                 let i_fields = info_fields.clone();
@@ -141,17 +141,17 @@ fn main() {
                                 let use_db = Arc::clone(&new_db);
                                 let b_info = Arc::clone(&broadcast_info);
                                 let short_port = short_port.clone();
+                                let use_stream = Arc::clone(&s);
 
-                                let use_conn = conn
-                                    .try_clone()
-                                    .expect("failed to clone connection to master");
                                 stream_pool.execute(move || {
-                                    let res = handle_master(
-                                        use_conn.try_clone().expect("failed to clone master conn"),
+                                    let res = handle_client(
+                                        use_stream,
+                                        None,
+                                        None,
                                         i_fields,
                                         b_info,
+                                        &Some(short_port.as_str()),
                                         &m_port,
-                                        &short_port,
                                         &use_db,
                                     );
                                     match res {
@@ -201,10 +201,21 @@ fn main() {
 
                 let b_info = Arc::clone(&broadcast_info);
                 let use_db = Arc::clone(&new_db);
+                let s = Arc::new(Mutex::new(_stream));
+
+                let short_port = short_port.clone();
 
                 stream_pool.execute(move || {
-                    let res =
-                        handle_client(_stream, dir_arg, db_arg, i_fields, b_info, &m_port, &use_db);
+                    let res = handle_client(
+                        s,
+                        dir_arg,
+                        db_arg,
+                        i_fields,
+                        b_info,
+                        &Some(short_port.as_str()),
+                        &m_port,
+                        &use_db,
+                    );
                     match res {
                         Ok(_) => {}
                         Err(e) => {
@@ -221,171 +232,102 @@ fn main() {
     println!("Shutting down.");
 }
 
-fn handle_master(
-    mut stream: TcpStream,
-    info_fields: HashMap<String, String>,
-    broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
-    master_port: &Option<String>,
-    replica_port: &str,
-    new_db: &Arc<Mutex<RedisDatabase>>,
-) -> Result<(), Box<dyn Error>> {
-    eprintln!("\n\nHANDLING MASTER\n");
-
-    eprintln!("CLIENT HANDLING MASTER , master port:{:?}", master_port);
-    eprintln!("CLIENT HANDLING MASTER , info:{:?}", broadcast_info);
-
-    {
-        eprintln!("HANDLING HANDSHAKE");
-        let buf = write_resp_arr(vec!["PING"]);
-        stream.write_all(&buf).expect("FAILED TO PING master");
-        let _ = read_response(&stream, Some(1));
-
-        let repl_port = utils::get_repl_bytes(REPL_CONF, LISTENING_PORT, &replica_port);
-        stream
-            .write_all(&repl_port)
-            .expect("FAILED to reply master");
-        let _ = read_response(&stream, Some(2));
-
-        let repl_capa = utils::get_repl_bytes(REPL_CONF, "capa", "psync2");
-        stream
-            .write_all(&repl_capa)
-            .expect("FAILED TO reply master");
-        let _ = read_response(&stream, Some(3));
-
-        let pysnc_resp = utils::get_repl_bytes(PSYNC, "?", "-1");
-        stream.write_all(&pysnc_resp).expect("Failed to send PSYNC");
-        let _ = read_response(&stream, Some(4));
-
-        let mut first_line = String::new();
-        let mut bulk_reader = BufReader::new(stream.try_clone().unwrap());
-        bulk_reader.read_line(&mut first_line).unwrap();
-        //let mut rdb_bytes = Vec::new();
-
-        if first_line.is_empty() {
-            eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
-        } else {
-            //eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
-            let rdb_len = first_line[1..]
-                .trim()
-                .parse::<usize>()
-                .expect("failed to parse rdb length");
-
-            //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-            //eprintln!("IGNORING RDB BYTES");
-            //bulk_reader.consume(rdb_len);
-
-            let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
-
-            bulk_reader
-                .read_exact(&mut received_rdb)
-                .expect("FAILE TO READ RDB IN HANDSHAKE");
-
-            //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
-            //decode_rdb(rdb_bytes);
-        }
-    }
-
-    loop {
-        let Some(all_lines) = utils::decode_bulk_string(&stream) else {
-            break;
-        };
-        if all_lines.len() <= 1 {
-            eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
-            //stream.write_all(RESP_OK).unwrap();
-            continue;
-        }
-        eprintln!("ALL LINES:{:?}", all_lines);
-        let cmd = &all_lines[1];
-
-        match cmd.to_lowercase().as_str() {
-            "ping" => {
-                stream.write_all(b"+PONG\r\n").unwrap();
-            }
-
-            "echo" => {
-                let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
-                stream.write_all(&resp).unwrap();
-            }
-
-            "set" => {
-                eprintln!("IN handle master SET");
-
-                if all_lines.len() < 6 {
-                    stream.write_all(RESP_NULL)?;
-                    continue;
-                }
-                if info_fields.get(ROLE).unwrap() == MASTER {
-                    //broadcast_commands(all_lines.as_slice(), &broadcast_info);
-                    broadcast_info.lock().unwrap().broadcast_command(&all_lines);
-                }
-                let k = all_lines[3].clone();
-                let v = all_lines[5].clone();
-
-                if all_lines.len() > 6 {
-                    handle_set(k, v, &new_db, Some((&all_lines[7], &all_lines[9])))?;
-                } else {
-                    handle_set(k, v, &new_db, None)?;
-                }
-            }
-
-            "command" => {
-                eprintln!("INITIATION, no command");
-            }
-
-            _ => unreachable!(),
-        }
-    }
-
-    Ok(())
-}
-
 fn handle_client(
-    mut stream: TcpStream,
+    stream: Arc<Mutex<TcpStream>>,
     dir: Option<String>,
     db_filename: Option<String>,
     info_fields: HashMap<String, String>,
     broadcast_info: Arc<std::sync::Mutex<BroadCastInfo>>,
+    replica_port: &Option<&str>,
     master_port: &Option<String>,
     new_db: &Arc<Mutex<RedisDatabase>>,
 ) -> Result<(), Box<dyn Error>> {
-    let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    if sent_by_main {
-        eprintln!("\n\n\nSENT BY MAIN\n\n");
-    };
+    //let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
+    eprintln!("IN CLIENT, master_port:{:?}", master_port);
+
+    let mut conn = RespConnection::new(Arc::clone(&stream));
+    if master_port.is_some() {
+        eprintln!("HANDLING HANDSHAKE");
+        conn.write_to_stream(&conn.format_resp_array(&["PING"]));
+        let res = conn.try_read_command();
+        eprintln!("Read result: {:?}", res);
+
+        let use_bytes = conn.format_resp_array(&[REPL_CONF, LISTENING_PORT, replica_port.unwrap()]);
+        conn.write_to_stream(&use_bytes);
+        eprintln!("Read result: {:?}", res);
+
+        conn.write_to_stream(&conn.format_resp_array(&[REPL_CONF, "capa", "psync2"]));
+        let _ = conn.try_read_command();
+        eprintln!("Read result: {:?}", res);
+
+        conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
+        let _ = conn.try_read_command();
+        eprintln!("Read result: {:?}", res);
+
+        // if first_line.is_empty() {
+        //     eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
+        // } else {
+        //     eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
+        //     let rdb_len = first_line[1..]
+        //         .trim()
+        //         .parse::<usize>()
+        //         .expect("failed to parse rdb length");
+
+        //     //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
+        //     eprintln!("IGNORING RDB BYTES");
+        //     //bulk_reader.consume(rdb_len);
+
+        //     let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
+
+        //     bulk_reader
+        //         .read_exact(&mut received_rdb)
+        //         .expect("FAILE TO READ RDB IN HANDSHAKE");
+
+        //     //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
+        //     //decode_rdb(rdb_bytes);
+        // }
+    }
 
     loop {
-        //eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
+        eprintln!("HANDLING CLIENT LOOP info:{:?}", &broadcast_info);
         // let Some(all_lines) = utils::decode_bulk_string(&stream) else {
         //     break;
         // };
-        // if all_lines.len() <= 1 {
-        //     eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
-        //     stream.write_all(RESP_NULL).unwrap();
-        //     continue;
-        // }
-        // eprintln!("ALL LINES:{:?}", all_lines);
 
-        // let cmd = &all_lines[1];
-
-        let mut conn = RespConnection::new(stream.try_clone().unwrap());
+        eprintln!("made resp connection");
         match conn.try_read_command()? {
             Some(all_lines) => {
-                match all_lines[1].to_lowercase().as_str() {
+                if all_lines.len() <= 1 {
+                    eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+                    conn.write_to_stream(RESP_NULL);
+                    continue;
+                }
+                eprintln!("ALL LINES:{:?}", all_lines);
+
+                let cmd = &all_lines[1];
+                eprintln!("handling command{cmd}");
+                match cmd.to_lowercase().as_str() {
                     "ping" => {
-                        stream.write_all(b"+PONG\r\n").unwrap();
+                        conn.write_to_stream(b"+PONG\r\n");
                     }
                     "echo" => {
                         let resp = [b"+", all_lines[3].as_bytes(), b"\r\n"].concat();
-                        stream.write_all(&resp).unwrap();
+                        conn.write_to_stream(&resp);
                     }
 
                     "set" => {
                         eprintln!("IN handle client SET");
 
                         if all_lines.len() < 6 {
-                            stream.write_all(RESP_NULL)?;
+                            conn.write_to_stream(RESP_NULL);
                             continue;
                         }
+
+                        if info_fields.get(ROLE).is_some_and(|k| k == MASTER) {
+                            conn.broadcast_command(&all_lines)
+                                .expect("Failed broadcast");
+                        }
+
                         {
                             if info_fields.get(ROLE).unwrap() == MASTER {
                                 //broadcast_commands(all_lines.as_slice(), &broadcast_info);
@@ -398,12 +340,12 @@ fn handle_client(
                                 let r =
                                     handle_set(k, v, new_db, Some((&all_lines[7], &all_lines[9])));
                                 if r.is_ok() {
-                                    stream.write_all(RESP_OK)?;
+                                    conn.write_to_stream(RESP_OK);
                                 }
                             } else {
                                 let r = handle_set(k, v, new_db, None);
                                 if r.is_ok() {
-                                    stream.write_all(RESP_OK)?;
+                                    conn.write_to_stream(RESP_OK);
                                 }
                             }
                             eprintln!("MASTER FINISHED SET");
@@ -415,12 +357,31 @@ fn handle_client(
                      * */
                     "get" => {
                         if all_lines.len() <= 3 {
-                            stream.write_all(RESP_NULL)?;
+                            conn.write_to_stream(RESP_NULL);
                             continue;
                         }
                         eprintln!("IN handle client GET");
                         let get_key = &all_lines[3];
-                        handle_get(get_key, &mut stream, new_db)?;
+                        {
+                            //eprintln!("in handle GET function before lock");
+                            let mut lk = new_db.lock().expect("failed to lock db in get");
+                            //eprintln!("in handle GET function locked db:{:?}", lk);
+                            if let Some(res) = lk.get(&get_key) {
+                                if res.expires_at.is_some()
+                                    && res.expires_at.as_ref().unwrap().is_expired()
+                                {
+                                    //eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
+                                    lk.data.remove(get_key);
+                                    conn.write_to_stream(crate::RESP_NULL);
+                                } else {
+                                    let resp = crate::utils::get_bulk_string(&res.value);
+                                    conn.write_to_stream(&resp);
+                                }
+                            } else {
+                                //eprintln!("IN GET FOUND NONE");
+                                conn.write_to_stream(crate::RESP_NULL);
+                            }
+                        }
                     }
 
                     /*
@@ -429,62 +390,93 @@ fn handle_client(
                     "config" => {
                         let config_command = all_lines[3].to_lowercase();
                         let config_field = all_lines[5].to_lowercase();
-                        config_response(config_command, config_field, stream, dir, db_filename);
+                        let dir = dir.clone();
+                        let db_filename = db_filename.clone();
+                        match config_command.as_str() {
+                            "get" => match config_field.as_str() {
+                                "dir" => {
+                                    if let Some(dir_name) = &dir {
+                                        conn.write_to_stream(
+                                            &conn.format_resp_array(&[&config_field, dir_name]),
+                                        );
+                                        //stream.write_all(&resp).unwrap();
+                                    } else {
+                                        //stream.write_all(crate::RESP_NULL)?;
+                                        conn.write_to_stream(crate::RESP_NULL);
+                                    }
+                                }
+                                "dbfilename" => {
+                                    if let Some(db_name) = &db_filename {
+                                        conn.write_to_stream(
+                                            &conn.format_resp_array(&[&config_field, &db_name]),
+                                        );
+                                    } else {
+                                        conn.write_to_stream(crate::RESP_NULL);
+                                    }
+                                }
+                                _ => {
+                                    eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+                                }
+                            },
+                            _ => {
+                                eprintln!("UNRECOGNIZED CONFIG COMMAND")
+                            }
+                        }
                     }
 
                     //KEYS
                     "keys" => {
                         let path: PathBuf;
                         if db_filename.is_some() && dir.is_some() {
-                            //eprintln!("OUND FILE");
+                            eprintln!("OUND FILE");
                             let file = db_filename.as_ref().unwrap();
 
                             let directory = dir.as_ref().unwrap();
-                            //eprintln!("OUND DIR");
+                            eprintln!("OUND DIR");
                             // write current hashmap to rdb
                             path = Path::new(directory).join(file);
                         } else {
                             path = env::current_dir().unwrap().join("dump.rdb");
                         }
 
-                        //eprintln!("USING PATH:{:?}", &path);
+                        eprintln!("USING PATH:{:?}", &path);
 
                         let mut file = File::open(&path)?;
                         let mut buffer = Vec::new();
                         file.read_to_end(&mut buffer)?;
 
-                        //eprintln!("Printin rdb as HEX");
+                        eprintln!("Printin rdb as HEX");
                         print_hex::print_hex_dump(&buffer);
                         match read_rdb_file(path) {
                             Ok(rdb) => {
                                 let ret_keys = utils::read_rdb_keys(rdb, all_lines[3].clone());
 
                                 //EXAMPLE: *1\r\n$3\r\nfoo\r\n
-                                let _ = stream.write_all(
+                                let _ = conn.write_to_stream(
                                     &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"]
                                         .concat(),
                                 );
                                 ret_keys.iter().enumerate().for_each(|(_, e)| {
-                                    let _ = stream.write_all(&utils::get_bulk_string(e));
+                                    let _ = conn.write_to_stream(&utils::get_bulk_string(e));
                                 });
                             }
                             Err(_e) => {
                                 //eprintln!("failed to read from rdb file {:?}", e);
-                                stream.write_all(RESP_NULL).unwrap();
+                                conn.write_to_stream(RESP_NULL);
                             }
                         }
                     }
 
                     //SAVE
                     "save" => {
-                        //eprintln!("IN SAVE");
+                        eprintln!("IN SAVE");
                         let mut path: PathBuf;
                         if db_filename.is_some() && dir.is_some() {
                             // create a new file path then write current hashmap to rdb
                             path = Path::new(dir.as_ref().unwrap())
                                 .join(db_filename.as_ref().unwrap());
 
-                            //eprintln!("Path:{:?}", &path);
+                            eprintln!("Path:{:?}", &path);
                             let mut new_rdb = RdbFile {
                                 version: "0011".to_string(),
                                 metadata: HashMap::new(),
@@ -494,22 +486,22 @@ fn handle_client(
                             new_rdb
                                 .metadata
                                 .insert("redis-version".to_string(), "6.0.16".to_string());
-                            //eprintln!("IN Save, using map {:?}", new_db);
+                            eprintln!("IN Save, using map {:?}", new_db);
                             {
                                 let lk = new_db.lock().expect("failed to lock db in save");
                                 new_rdb.databases.insert(0, lk.clone().try_into()?);
-                                //eprintln!("Creating a new rdb with {:?}", new_rdb);
+                                eprintln!("Creating a new rdb with {:?}", new_rdb);
                             }
                             let _ = write_rdb_file(path, &new_rdb);
 
-                            //eprintln!("after SAVE writing to file");
-                            stream.write_all(RESP_OK)?;
+                            eprintln!("after SAVE writing to file");
+                            conn.write_to_stream(RESP_OK);
                         } else {
-                            //eprintln!("Creating DUMMY in curr dir");
+                            eprintln!("Creating DUMMY in curr dir");
                             path = env::current_dir().unwrap();
                             path.push("dump.rdb");
                             print_hex::create_dummy_rdb(&path)?;
-                            stream.write_all(RESP_OK)?;
+                            conn.write_to_stream(RESP_OK);
                             // no need for data as it already mocked
                         }
                     }
@@ -536,7 +528,7 @@ fn handle_client(
                                 _ => {}
                             }
                             eprintln!("INFO RESPONSE:{:?}", use_resp);
-                            stream.write_all(&utils::get_bulk_string(&use_resp))?;
+                            conn.write_to_stream(&utils::get_bulk_string(&use_resp));
                         } else {
                             eprintln!("IN INFO ELSE");
                             let mut use_val = String::new();
@@ -547,7 +539,7 @@ fn handle_client(
                             // remove the last CRLF
                             let info_res = utils::get_bulk_string(&use_val[..use_val.len() - 2]);
                             eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
-                            stream.write_all(&info_res)?;
+                            conn.write_to_stream(&info_res);
                         }
                         eprintln!("AFTER INFO SECTION");
                     }
@@ -563,7 +555,7 @@ fn handle_client(
                         }
                         eprintln!("is LISTENER handshake?:{is_listener}");
                         eprintln!("after repl pushing ports:{:?}", broadcast_info);
-                        stream.write_all(RESP_OK)?;
+                        conn.write_to_stream(RESP_OK);
                         eprintln!("WROTE ok to replconf");
                     }
 
@@ -583,7 +575,7 @@ fn handle_client(
                         {
                             let mut lk = broadcast_info.lock().unwrap();
                             lk.connections
-                                .push(RespConnection::new(stream.try_clone().unwrap()));
+                                .push(RespConnection::new(Arc::clone(&stream)));
                         }
                         {
                             let mut lk = broadcast_info.lock().unwrap();
