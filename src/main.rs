@@ -268,7 +268,7 @@ fn handle_client(
                 eprintln!("ALL COMMANDS:{:?}", commands);
                 eprintln!("current broadcast info:{:?}", broadcast_info);
                 for all_lines in commands {
-                    std::thread::sleep(Duration::from_millis(50));
+                    //std::thread::sleep(Duration::from_millis(50));
                     if all_lines.len() <= 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
                         conn.write_to_stream(RESP_NULL);
@@ -599,7 +599,7 @@ fn handle_client(
                 }
             }
             Ok(None) => {
-                std::thread::sleep(Duration::from_millis(50));
+                //std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
                 eprintln!("Connection error: {}", e);

@@ -82,7 +82,7 @@ impl RespConnection {
 
         match self.stream.read(&mut temp_buf) {
             Ok(0) => {
-                std::thread::sleep(Duration::from_millis(10));
+                //std::thread::sleep(Duration::from_millis(5));
                 return Ok(None);
             }
             Ok(n) => {
@@ -93,7 +93,7 @@ impl RespConnection {
                 self.buffer.extend_from_slice(&temp_buf[..n]);
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(20));
+                //std::thread::sleep(Duration::from_millis(5));
                 return Ok(None);
             }
             Err(e) => {
@@ -166,7 +166,7 @@ impl RespConnection {
                                 "adding to pos after valid line with elements before: {}",
                                 self.position
                             );
-                            self.position += line_str.len() + 1; // +1 for newline
+                            self.position += line_str.len() + 2; // +1 for newline
                             eprintln!("after:{}", self.position);
                         } else {
                             eprintln!("valid?{valid}, elements?{:?}", elements);
@@ -181,7 +181,7 @@ impl RespConnection {
 
                         // Skip RDB data
                         let rdb_start = self.position + line_str.len() + 1;
-                        let rdb_end = rdb_start + rdb_len + 4; // +2 for \r\n
+                        let rdb_end = rdb_start + rdb_len + 1; // +2 for \r\n
 
                         if self.buffer.len() >= rdb_end {
                             eprintln!("SHOULDNT BE MOVING RDB END");
@@ -346,9 +346,9 @@ impl RespConnection {
                         "adding to length for final line, before pos{:?}",
                         self.position
                     );
-                    let rdb_start = self.position + line_str.len() + 4; // +2 for \r\n
+                    let rdb_start = self.position + line_str.len() + 2; // +2 for \r\n
                     eprintln!("after, pos:{}", self.position);
-                    let rdb_end = rdb_start + rdb_len; // + 2;
+                    let rdb_end = rdb_start + rdb_len;
                     eprintln!(
                         "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
                         self.buffer.len()
