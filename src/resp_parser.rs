@@ -54,7 +54,7 @@ impl BroadCastInfo {
 #[derive(Debug)]
 pub struct RespConnection {
     //pub stream: Arc<Mutex<TcpStream>>,
-    stream: TcpStream,
+    pub stream: TcpStream,
     pub buffer: Vec<u8>,
     pub position: usize,
 }
@@ -77,15 +77,12 @@ impl RespConnection {
 
     pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         // Read available data
-        eprintln!("TRYING TO READ COMMAND");
         {
-            eprintln!("locking stream in read");
             //let mut stream = self.stream.lock().unwrap();
             let mut temp_buf = [0; 4096];
 
             match self.stream.read(&mut temp_buf) {
                 Ok(0) => {
-                    eprintln!("found nothing");
                     return Ok(None);
                 }
                 Ok(n) => {
@@ -96,7 +93,6 @@ impl RespConnection {
                     self.buffer.extend_from_slice(&temp_buf[..n]);
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    eprintln!("Error {e}");
                     return Ok(None);
                 }
                 Err(e) => {
@@ -105,148 +101,134 @@ impl RespConnection {
                 }
             }
         }
-        eprintln!("AFTER locking stream in read");
+        eprintln!("AFTER stream in read");
 
         // Parse complete commands from buffer
         self.parse_buffer()
     }
 
-    pub fn write_to_stream(&mut self, buf: &[u8]) {
-        eprintln!("locking stream in write");
-        eprintln!("writing:{:?}", String::from_utf8(buf.into()));
-        self.stream
-            .write_all(&buf)
-            .expect("in RespConn failed to write to steam");
-        eprintln!("AFTER STREAM LOCK in write");
-    }
-
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!("PARSING BUFFER");
         //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
-        let parsed_string = String::from_utf8(self.buffer[self.position..].into())
-            .expect("FAILED TO CONVERT  STREAM TO STRING");
+        if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
+            let mut lines = parsed_string.split("\r\n");
+            let mut commands = Vec::new();
 
-        let mut lines = parsed_string.split("\r\n");
-        let mut commands = Vec::new();
+            while let Some(line_str) = lines.next() {
+                if line_str.is_empty() {
+                    //eprintln!("EMPTY  BREAKING");
+                    //break;
+                    eprintln!("EMPTY CONTINUE");
+                    continue;
+                }
 
-        while let Some(line_str) = lines.next() {
-            eprintln!("checking line:{line_str}");
-            if line_str.is_empty() {
-                //eprintln!("EMPTY  BREAKING");
-                //break;
-                eprintln!("EMPTY CONTINUE");
-                continue;
-            }
+                // let line_str = match String::from_utf8(line.to_vec()) {
+                //     Ok(s) => s,
+                //     Err(_) => continue, // Skip invalid UTF-8
+                // };
 
-            // let line_str = match String::from_utf8(line.to_vec()) {
-            //     Ok(s) => s,
-            //     Err(_) => continue, // Skip invalid UTF-8
-            // };
+                match line_str.chars().next() {
+                    Some('*') => {
+                        // Array type
+                        let arr_length = match line_str[1..].trim().parse::<usize>() {
+                            Ok(n) => n,
+                            Err(_) => continue,
+                        };
 
-            match line_str.chars().next() {
-                Some('*') => {
-                    eprintln!("in RESP array type");
-                    // Array type
-                    let arr_length = match line_str[1..].trim().parse::<usize>() {
-                        Ok(n) => n,
-                        Err(_) => continue,
-                    };
+                        let mut elements = Vec::with_capacity(arr_length);
+                        let mut valid = true;
 
-                    let mut elements = Vec::with_capacity(arr_length);
-                    let mut valid = true;
+                        for _ in 0..arr_length {
+                            // Get bulk string header ($<length>)
+                            // let size_line = match lines.next() {
+                            //     Some(line) => match String::from_utf8(line.to_vec()) {
+                            //         Ok(s) => s,
+                            //         Err(_) => {
+                            //             valid = false;
+                            //             break;
+                            //         }
+                            //     },
+                            //     None => {
+                            //         valid = false;
+                            //         break;
+                            //     }
+                            // };
 
-                    eprintln!("checking resp array of size:{arr_length}");
-                    for _ in 0..arr_length {
-                        // Get bulk string header ($<length>)
-                        // let size_line = match lines.next() {
-                        //     Some(line) => match String::from_utf8(line.to_vec()) {
-                        //         Ok(s) => s,
-                        //         Err(_) => {
-                        //             valid = false;
-                        //             break;
-                        //         }
-                        //     },
-                        //     None => {
-                        //         valid = false;
-                        //         break;
-                        //     }
-                        // };
+                            let size_line = lines.next().unwrap();
+                            if !size_line.starts_with('$') {
+                                valid = false;
+                                break;
+                            }
 
-                        let size_line = lines.next().unwrap();
-                        eprintln!("got size line:{size_line}");
-                        if !size_line.starts_with('$') {
-                            valid = false;
-                            eprintln!("setting false");
-                            break;
+                            // Get bulk string content
+                            let size = match size_line[1..].trim().parse::<usize>() {
+                                Ok(n) => n,
+                                Err(_) => {
+                                    valid = false;
+                                    break;
+                                }
+                            };
+
+                            // let content = match lines.next() {
+                            //     Some(line) => match String::from_utf8(line.to_vec()) {
+                            //         Ok(s) => s,
+                            //         Err(_) => {
+                            //             valid = false;
+                            //             break;
+                            //         }
+                            //     },
+                            //     None => {
+                            //         valid = false;
+                            //         break;
+                            //     }
+                            // };
+                            if let Some(content) = lines.next() {
+                                if content.len() != size {
+                                    valid = false;
+                                    break;
+                                }
+                                elements.push(content.to_string());
+                            };
+                            //elements.push(content);
                         }
 
-                        // Get bulk string content
-                        let size = match size_line[1..].trim().parse::<usize>() {
+                        if valid && elements.len() == arr_length {
+                            commands.push(elements);
+                            self.position += line_str.len() + 1; // +1 for newline
+                        } else {
+                            eprintln!("valid?{valid}, elements?{:?}", elements);
+                        }
+                    }
+                    Some('$') => {
+                        // Bulk string (RDB file transfer)
+                        let rdb_len = match line_str[1..].trim().parse::<usize>() {
                             Ok(n) => n,
-                            Err(_) => {
-                                valid = false;
-                                break;
-                            }
+                            Err(_) => continue,
                         };
 
-                        // let content = match lines.next() {
-                        //     Some(line) => match String::from_utf8(line.to_vec()) {
-                        //         Ok(s) => s,
-                        //         Err(_) => {
-                        //             valid = false;
-                        //             break;
-                        //         }
-                        //     },
-                        //     None => {
-                        //         valid = false;
-                        //         break;
-                        //     }
-                        // };
-                        if let Some(content) = lines.next() {
-                            if content.len() != size {
-                                valid = false;
-                                break;
-                            }
-                            eprintln!("got content:{content}");
-                            elements.push(content.to_string());
-                        };
-                        //elements.push(content);
-                    }
+                        // Skip RDB data
+                        let rdb_start = self.position + line_str.len() + 1;
+                        let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
 
-                    if valid && elements.len() == arr_length {
-                        commands.push(elements);
-                        self.position += line_str.len() + 1; // +1 for newline
-                    } else {
-                        eprintln!("valid?{valid}, elements?{:?}", elements);
+                        if self.buffer.len() >= rdb_end {
+                            self.position = rdb_end;
+                        } else {
+                            break; // Wait for more data
+                        }
                     }
+                    _ => continue, // Skip other RESP types
                 }
-                Some('$') => {
-                    // Bulk string (RDB file transfer)
-                    let rdb_len = match line_str[1..].trim().parse::<usize>() {
-                        Ok(n) => n,
-                        Err(_) => continue,
-                    };
-
-                    // Skip RDB data
-                    let rdb_start = self.position + line_str.len() + 1;
-                    let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
-
-                    if self.buffer.len() >= rdb_end {
-                        self.position = rdb_end;
-                    } else {
-                        break; // Wait for more data
-                    }
-                }
-                _ => continue, // Skip other RESP types
             }
-        }
-        eprintln!("AFTER parse buffer while, commands{:?}", commands);
 
-        Ok(if !commands.is_empty() {
-            Some(commands)
+            Ok(if !commands.is_empty() {
+                Some(commands)
+            } else {
+                None
+            })
         } else {
-            None
-        })
+            eprintln!("need to parse RDB");
+            Ok(None)
+        }
     }
 
     pub fn broadcast_command(&mut self, command: &[String]) -> std::io::Result<()> {
@@ -263,5 +245,14 @@ impl RespConnection {
             resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
         }
         resp
+    }
+
+    pub fn write_to_stream(&mut self, buf: &[u8]) {
+        eprintln!(" stream in write");
+        eprintln!("writing:{:?}", String::from_utf8(buf.into()));
+        self.stream
+            .write_all(&buf)
+            .expect("in RespConn failed to write to steam");
+        eprintln!("AFTER STREAM in write");
     }
 }
