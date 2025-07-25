@@ -6,6 +6,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
@@ -414,6 +415,7 @@ impl RespConnection {
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
         eprintln!("AFTER STREAM in write");
+        sleep(Duration::from_millis(5));
     }
 
     pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
