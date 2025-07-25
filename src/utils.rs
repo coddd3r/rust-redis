@@ -322,7 +322,7 @@ pub fn handle_set(
 //    Ok(())
 //}
 //
-//pub fn read_db_from_stream<R: Read>(rdb_len: usize, mut bulk_reader: R) -> Vec<u8> {
+//pub fn read_rdb_from_stream<R: Read>(rdb_len: usize, mut bulk_reader: R) -> Vec<u8> {
 //    ////eprintln!("IN FUNCTION GO STREAM SIZE: {first_line}");
 //    let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
 //    //eprintln!("writing to vec with capacity:{:?}", received_rdb.capacity());

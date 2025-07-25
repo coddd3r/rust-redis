@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -106,7 +107,7 @@ impl RespConnection {
     }
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        eprintln!("PARSING BUFFER");
+        eprintln!("PARSING BUFFER, starting at pos:{}", self.position);
         //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
             let mut lines = parsed_string.split("\r\n");
@@ -120,11 +121,6 @@ impl RespConnection {
                     continue;
                 }
 
-                // let line_str = match String::from_utf8(line.to_vec()) {
-                //     Ok(s) => s,
-                //     Err(_) => continue, // Skip invalid UTF-8
-                // };
-
                 match line_str.chars().next() {
                     Some('*') => {
                         // Array type
@@ -137,21 +133,6 @@ impl RespConnection {
                         let mut valid = true;
 
                         for _ in 0..arr_length {
-                            // Get bulk string header ($<length>)
-                            // let size_line = match lines.next() {
-                            //     Some(line) => match String::from_utf8(line.to_vec()) {
-                            //         Ok(s) => s,
-                            //         Err(_) => {
-                            //             valid = false;
-                            //             break;
-                            //         }
-                            //     },
-                            //     None => {
-                            //         valid = false;
-                            //         break;
-                            //     }
-                            // };
-
                             let size_line = lines.next().unwrap();
                             if !size_line.starts_with('$') {
                                 valid = false;
@@ -167,19 +148,6 @@ impl RespConnection {
                                 }
                             };
 
-                            // let content = match lines.next() {
-                            //     Some(line) => match String::from_utf8(line.to_vec()) {
-                            //         Ok(s) => s,
-                            //         Err(_) => {
-                            //             valid = false;
-                            //             break;
-                            //         }
-                            //     },
-                            //     None => {
-                            //         valid = false;
-                            //         break;
-                            //     }
-                            // };
                             if let Some(content) = lines.next() {
                                 if content.len() != size {
                                     valid = false;
@@ -192,7 +160,12 @@ impl RespConnection {
 
                         if valid && elements.len() == arr_length {
                             commands.push(elements);
+                            eprintln!(
+                                "adding to pos after valid line with elements before: {}",
+                                self.position
+                            );
                             self.position += line_str.len() + 1; // +1 for newline
+                            eprintln!("after:{}", self.position);
                         } else {
                             eprintln!("valid?{valid}, elements?{:?}", elements);
                         }
@@ -209,7 +182,9 @@ impl RespConnection {
                         let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
 
                         if self.buffer.len() >= rdb_end {
+                            eprintln!("SHOULDNT BE MOVING RDB END");
                             self.position = rdb_end;
+                            eprintln!("AFTER MOVING ILLEGAL RDB END:{}", self.position);
                         } else {
                             break; // Wait for more data
                         }
@@ -228,53 +203,239 @@ impl RespConnection {
                 "need to parse RDB, got string:{:?}",
                 String::from_utf8_lossy(&self.buffer[self.position..])
             );
+            self.handle_rdb_transfer()
+            // let mut current_pos = self.position;
+            // let mut n = 10;
+            // while current_pos < self.buffer.len() {
+            //     //eprintln!("in RDB loop");
+            //     // Find the next newline
+            //     if let Some(line_end) = self.buffer[current_pos..].iter().position(|&b| b == b'\n')
+            //     {
+            //         //   eprintln!("if satisfied");
+            //         let line = &self.buffer[current_pos..current_pos + line_end];
+            //         //move past new line
+            //         current_pos = line_end + 1;
+            //         if line.is_empty() {
+            //             eprintln!("empty line");
+            //             continue;
+            //         }
+            //         let line_str = match String::from_utf8(line.to_vec()) {
+            //             Ok(s) => s,
+            //             Err(_) => continue, // Skip invalid UTF-8
+            //         };
+            //         if n > 0 {
+            //             eprintln!("curr line_str: {:?}, line end:{line_end}", line_str);
 
-            let mut current_pos = self.position;
-            while current_pos < self.buffer.len() {
-                // Find the next newline
-                if let Some(line_end) = self.buffer[current_pos..].iter().position(|&b| b == b'\n')
-                {
-                    let line = &self.buffer[current_pos..current_pos + line_end];
-                    //move past new line
-                    current_pos = line_end + 1;
-                    if line.is_empty() {
-                        continue;
-                    }
-                    let line_str = match String::from_utf8(line.to_vec()) {
-                        Ok(s) => s,
-                        Err(_) => continue, // Skip invalid UTF-8
-                    };
-                    match line_str.chars().nth(0) {
-                        Some('$') => {
-                            let rdb_len = match line_str[1..].trim().parse::<usize>() {
-                                Ok(n) => n,
-                                Err(_) => continue,
-                            };
-                            // Skip RDB data
-                            let rdb_start = self.position + line_str.len() + 1;
-                            let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
+            //             n -= 1;
+            //         }
+            //         let use_char = line_str.chars().nth(0);
+            //         match use_char {
+            //             Some('$') => {
+            //                 eprintln!("FOUND LENGTH LINE");
+            //                 let rdb_len = match line_str[1..].trim().parse::<usize>() {
+            //                     Ok(n) => n,
+            //                     Err(_) => continue,
+            //                 };
+            //                 // Skip RDB data
+            //                 let rdb_start = self.position + line_str.len() + 1;
+            //                 let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
 
-                            if self.buffer.len() >= rdb_end {
-                                self.position = rdb_end;
-                            } else {
-                                break; // Wait for more data
-                            }
-                            eprintln!(
-                                "after handling rdb, buffer:{:?}",
-                                String::from_utf8_lossy(&self.buffer[self.position..])
-                            )
-                        }
-                        Some(_) => {
-                            continue;
-                        }
-                        None => unreachable!(),
-                    }
-                }
-            }
-            Ok(None)
+            //                 if self.buffer.len() >= rdb_end {
+            //                     self.position = rdb_end;
+            //                 } else {
+            //                     break; // Wait for more data
+            //                 }
+            //                 eprintln!(
+            //                     "after handling rdb, buffer:{:?}",
+            //                     String::from_utf8_lossy(&self.buffer[self.position..])
+            //                 )
+            //             }
+            //             Some(_) => {
+            //                 if n > 0 {
+            //                     eprintln!("other some with {:?}", use_char)
+            //                 }
+            //                 continue;
+            //             }
+            //             None => unreachable!(),
+            //         }
+            //     }
+            // }
+            // Ok(None)
         }
     }
 
+    fn handle_rdb_transfer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
+        eprintln!("\n\nhandling rdb starting at pos:{}\n\n", self.position);
+        let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
+        let mut commands = Vec::new();
+
+        while let Some(line) = lines.next() {
+            if line.is_empty() {
+                //move past '\n'
+                eprint!("adding 1 to pos for empty line, before {}", self.position);
+                self.position += 1;
+                eprintln!("after:{}", self.position);
+                continue;
+            }
+
+            eprintln!("checking line:{:?}", String::from_utf8_lossy(line.into()));
+            let line_str = match String::from_utf8(line.to_vec()) {
+                Ok(s) => s,
+                Err(_) => {
+                    eprint!(
+                        "adding 1 to pos for error to utf8 line, before {}",
+                        self.position
+                    );
+                    self.position += line.len() + 1;
+                    eprintln!("after pos:{}", self.position);
+
+                    continue;
+                } //if not valid utf8 keep going
+            };
+
+            eprintln!("line str valid {:?}", line_str);
+            match line_str.chars().next() {
+                Some('*') => {
+                    eprintln!("\n\nMATCHED A LINE IN RDB!!???{:?}\n\n", line_str);
+                    let arr_length = match line_str[1..].trim().parse::<usize>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            eprint!(
+                                "adding 1 to pos for error to usize line, before {}",
+                                self.position
+                            );
+                            self.position += line_str.len() + 1;
+                            eprintln!("after pos:{}", self.position);
+                            continue;
+                        }
+                    };
+                    let mut elements = Vec::with_capacity(arr_length);
+                    let mut valid = true;
+
+                    for _ in 0..arr_length {
+                        let size_line = match lines.next() {
+                            Some(line) => match String::from_utf8(line.into()) {
+                                Ok(s) => s,
+                                Err(_) => {
+                                    valid = false;
+                                    break;
+                                }
+                            },
+                            None => {
+                                valid = false;
+                                break;
+                            }
+                        };
+                        if !size_line.starts_with('$') {
+                            eprintln!("FAKE SIZE LINE");
+                            valid = false;
+                            break;
+                        }
+
+                        let size = match size_line[1..].trim().parse::<usize>() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                valid = false;
+                                break;
+                            }
+                        };
+                        eprintln!("in resp got size:{size}, from size_line:{:?}", size_line);
+                        let mut content = match lines.next() {
+                            Some(line) => {
+                                match String::from_utf8(line.to_vec()) {
+                                    Ok(s) => s,
+                                    Err(_) => {
+                                        eprintln!("breaking in conversion of line to utf8 insdie resp arr");
+                                        valid = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            None => {
+                                valid = false;
+                                break;
+                            }
+                        };
+
+                        content = content.trim().to_string();
+                        eprintln!("GOT content:{:?}", content);
+                        //RESP ARRAY DECODED WRONG
+                        if content.len() != size {
+                            eprintln!("breaking because content is not the same size");
+                            valid = false;
+                            break;
+                        }
+
+                        eprintln!("ELEMENTs at end: {:?}", elements);
+                        elements.push(content.to_string());
+                    }
+                    if valid && elements.len() == arr_length {
+                        commands.push(elements);
+                        eprint!(
+                            "adding length + 1 for valide elements, pos, {}",
+                            self.position
+                        );
+                        self.position += line_str.len() + 1; // +1 for newline
+                        eprintln!("after, pos:{}", self.position)
+                    }
+                }
+                Some('$') => {
+                    // AT START OF RDB TRANSFER
+                    eprintln!("ACTUAL RDB SECTION");
+                    let rdb_len = match line_str[1..].trim().parse::<usize>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            eprint!(
+                                "actual rdb adding line length in failed usize parse, before:{}",
+                                self.position
+                            );
+                            self.position += line_str.len() + 1;
+                            eprintln!("after, pos:{}", self.position);
+                            continue;
+                        }
+                    };
+                    // Skip RDB data
+
+                    eprintln!("found length {rdb_len}");
+                    eprintln!(
+                        "adding to length for final line, before pos{:?}",
+                        self.position
+                    );
+                    let rdb_start = self.position + line_str.len() + 2; // +2 for \r\n
+                    eprintln!("after, pos:{}", self.position);
+                    let rdb_end = rdb_start + rdb_len; // + 2;
+                    eprintln!(
+                        "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
+                        self.buffer.len()
+                    );
+
+                    let rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
+                    eprintln!(
+                        "PARSED RDB IN STR:{:?}",
+                        String::from_utf8_lossy(&rdb_bytes)
+                    );
+                    //self.decode_rdb(rdb_bytes);
+
+                    if self.buffer.len() >= rdb_end {
+                        self.position = rdb_end; // Move pointer forward
+                        eprintln!("POSITION AFTER RDB:{}", self.position);
+                        break;
+                    } else {
+                        eprintln!("\n\nBREAK??\n\n");
+                        break; // Wait for more data
+                    }
+                }
+                _ => {
+                    eprint!("\nadding to pos in other curr:{}", self.position);
+                    self.position += line_str.len();
+                    eprintln!(" other NEXT:{}\n\n\n", self.position);
+                    continue;
+                }
+            }
+        }
+        eprintln!("AFTER RDB commands?{:?}, pos:{}", commands, self.position);
+        Ok(Some(commands))
+    }
     pub fn broadcast_command(&mut self, command: &[String]) {
         eprintln!("got signal to propagate to stream:{:?}", self.stream);
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
@@ -304,5 +465,25 @@ impl RespConnection {
             .expect("in RespConn failed to write to steam");
         std::thread::sleep(Duration::from_millis(50));
         eprintln!("AFTER STREAM in write");
+    }
+
+    pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
+        eprintln!("DECODING RDB BYTES RECEIVED");
+        eprintln!(
+            "read from stream num rdb file:{:?}, length:{:?}",
+            received_rdb,
+            received_rdb.len()
+        );
+        crate::print_hex_dump(&received_rdb);
+
+        let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
+
+        let mut file = File::create(&received_rdb_path).unwrap();
+        file.write_all(&received_rdb)
+            .expect("failed to write receive rdb to file");
+        //eprintln!("WRPTE RESPONSE TO FILE");
+        let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+            .expect("failed tp read response rdb from file");
+        eprintln!("RECEIVED RDB:{:?}", final_rdb);
     }
 }
