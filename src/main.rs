@@ -337,8 +337,6 @@ fn handle_client(
                                 eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 conn.write_to_stream(RESP_OK);
                             }
-
-                            eprintln!("MASTER FINISHED SET");
                         }
 
                         /*
@@ -377,8 +375,8 @@ fn handle_client(
                          *CONFIG
                          * */
                         "config" => {
-                            let config_command = all_lines[3].to_lowercase();
-                            let config_field = all_lines[5].to_lowercase();
+                            let config_command = all_lines[1].to_lowercase();
+                            let config_field = all_lines[2].to_lowercase();
                             let dir = dir.clone();
                             let db_filename = db_filename.clone();
                             match config_command.as_str() {
@@ -417,7 +415,7 @@ fn handle_client(
                         "keys" => {
                             let path: PathBuf;
                             if db_filename.is_some() && dir.is_some() {
-                                eprintln!("OUND FILE");
+                                eprintln!("FOUND FILE");
                                 let file = db_filename.as_ref().unwrap();
 
                                 let directory = dir.as_ref().unwrap();
@@ -438,7 +436,7 @@ fn handle_client(
                             print_hex::print_hex_dump(&buffer);
                             match read_rdb_file(path) {
                                 Ok(rdb) => {
-                                    let ret_keys = utils::read_rdb_keys(rdb, all_lines[3].clone());
+                                    let ret_keys = utils::read_rdb_keys(rdb, all_lines[1].clone());
 
                                     //EXAMPLE: *1\r\n$3\r\nfoo\r\n
                                     let _ = conn.write_to_stream(
@@ -499,8 +497,8 @@ fn handle_client(
                         "info" => {
                             //if there is an extra key arg
                             eprintln!("IN INFO SECTION");
-                            if all_lines.len() > 5 {
-                                let info_key = &all_lines[5];
+                            if all_lines.len() > 2 {
+                                let info_key = &all_lines[1];
                                 let mut use_resp = String::new();
                                 match info_key.to_lowercase().as_str() {
                                     ROLE => {
