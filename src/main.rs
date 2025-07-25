@@ -269,9 +269,9 @@ fn handle_client(
                 eprintln!("current broadcast info:{:?}", broadcast_info);
                 for all_lines in commands {
                     //std::thread::sleep(Duration::from_millis(50));
-                    if all_lines.len() <= 1 {
+                    if all_lines.len() < 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
-                        conn.write_to_stream(RESP_NULL);
+                        //conn.write_to_stream(RESP_NULL);
                         continue;
                     }
                     eprintln!("ALL LINES:{:?}", all_lines);

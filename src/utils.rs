@@ -366,5 +366,114 @@ pub fn handle_set(
 //    x.push("\r\n".as_bytes());
 //    x
 //}
+// fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
+//     eprintln!("PARSING BUFFER, starting at pos:{}", self.position);
+//     eprintln!("WHOLE BUFFER:{:?}", String::from_utf8_lossy(&self.buffer));
+//     //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
+//     if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
+//         let mut lines = parsed_string.split("\r\n");
+//         let mut commands = Vec::new();
+
+//         while let Some(line_str) = lines.next() {
+//             if line_str.is_empty() {
+//                 //eprintln!("EMPTY  BREAKING");
+//                 //break;
+//                 eprintln!("EMPTY CONTINUE");
+//                 continue;
+//             }
+
+//             match line_str.chars().next() {
+//                 Some('*') => {
+//                     // Array type
+//                     let arr_length = match line_str[1..].trim().parse::<usize>() {
+//                         Ok(n) => n,
+//                         Err(_) => continue,
+//                     };
+//                     eprintln!(
+//                         "adding to pos ofr arr length line in resp arr before: {}",
+//                         self.position
+//                     );
+//                     self.position += line_str.len() + 2; // +2 for \r\n since we split at CRLF
+//                     eprintln!("after:{}", self.position);
+
+//                     let mut elements = Vec::with_capacity(arr_length);
+//                     let mut valid = true;
+
+//                     for _ in 0..arr_length {
+//                         eprintln!(
+//                             "adding to pos afte line in resp arr before: {}",
+//                             self.position
+//                         );
+//                         self.position += line_str.len() + 2; // +1 for newline
+//                         eprintln!("after:{}", self.position);
+
+//                         let size_line = lines.next().unwrap();
+//                         if !size_line.starts_with('$') {
+//                             valid = false;
+//                             break;
+//                         }
+
+//                         // Get bulk string content
+//                         let size = match size_line[1..].trim().parse::<usize>() {
+//                             Ok(n) => n,
+//                             Err(_) => {
+//                                 valid = false;
+//                                 break;
+//                             }
+//                         };
+
+//                         if let Some(content) = lines.next() {
+//                             if content.len() != size {
+//                                 valid = false;
+//                                 break;
+//                             }
+//                             elements.push(content.to_string());
+//                         };
+//                         //elements.push(content);
+//                     }
+
+//                     if valid && elements.len() == arr_length {
+//                         commands.push(elements);
+//                     } else {
+//                         eprintln!("valid?{valid}, elements?{:?}", elements);
+//                     }
+//                 }
+//                 Some('$') => {
+//                     // Bulk string (RDB file transfer)
+//                     let rdb_len = match line_str[1..].trim().parse::<usize>() {
+//                         Ok(n) => n,
+//                         Err(_) => continue,
+//                     };
+
+//                     // Skip RDB data
+//                     let rdb_start = self.position + line_str.len() + 1;
+//                     let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
+
+//                     if self.buffer.len() >= rdb_end {
+//                         eprintln!("SHOULDNT BE MOVING RDB END");
+//                         self.position = rdb_end;
+//                         eprintln!("AFTER MOVING ILLEGAL RDB END:{}", self.position);
+//                     } else {
+//                         break; // Wait for more data
+//                     }
+//                 }
+//                 _ => continue, // Skip other RESP types
+//             }
+//         }
+
+//         Ok(if !commands.is_empty() {
+//             Some(commands)
+//         } else {
+//             None
+//         })
+//     } else {
+//         eprintln!(
+//             "need to parse RDB, curr pos:{}, got string:{:?}",
+//             self.position,
+//             String::from_utf8_lossy(&self.buffer[self.position..])
+//         );
+//         self.handle_rdb_transfer()
+//     }
+// }
 //let re = r"$88\r\nREDIS0011\u{fa}\tredis-ver\x057.2.0\u{fa}\nredis-bits\u{c0}@\u{fa}\u{05}ctime\u{c2}m\b\u{bc}e\u{fa}\bused-mem°\u{c4}\x10\x00\u{fa}\baof-base\u{c0}\x00\u{ff}\u{f0}n;\u{fe}\u{c0}\u{ff}Z\u{a2}".as_bytes();
 //                        let res = r"REDIS0011\xfa\tredis-ver\x057.2.0\xfa\nredis-bits\xc0@\xfa\x05ctime\xc2m\b\xbce\xfa\bused-mem°\xc4\x10\x00\xfa\baof-base\xc0\x00\xff\xf0n;\xfe\xc0\xffZ\xa2".as_bytes();

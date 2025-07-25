@@ -109,109 +109,6 @@ impl RespConnection {
     }
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        eprintln!("PARSING BUFFER, starting at pos:{}", self.position);
-        eprintln!("WHOLE BUFFER:{:?}", String::from_utf8_lossy(&self.buffer));
-        //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
-        if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
-            let mut lines = parsed_string.split("\r\n");
-            let mut commands = Vec::new();
-
-            while let Some(line_str) = lines.next() {
-                if line_str.is_empty() {
-                    //eprintln!("EMPTY  BREAKING");
-                    //break;
-                    eprintln!("EMPTY CONTINUE");
-                    continue;
-                }
-
-                match line_str.chars().next() {
-                    Some('*') => {
-                        // Array type
-                        let arr_length = match line_str[1..].trim().parse::<usize>() {
-                            Ok(n) => n,
-                            Err(_) => continue,
-                        };
-
-                        let mut elements = Vec::with_capacity(arr_length);
-                        let mut valid = true;
-
-                        for _ in 0..arr_length {
-                            let size_line = lines.next().unwrap();
-                            if !size_line.starts_with('$') {
-                                valid = false;
-                                break;
-                            }
-
-                            // Get bulk string content
-                            let size = match size_line[1..].trim().parse::<usize>() {
-                                Ok(n) => n,
-                                Err(_) => {
-                                    valid = false;
-                                    break;
-                                }
-                            };
-
-                            if let Some(content) = lines.next() {
-                                if content.len() != size {
-                                    valid = false;
-                                    break;
-                                }
-                                elements.push(content.to_string());
-                            };
-                            //elements.push(content);
-                        }
-
-                        if valid && elements.len() == arr_length {
-                            commands.push(elements);
-                            eprintln!(
-                                "adding to pos after valid line with elements before: {}",
-                                self.position
-                            );
-                            self.position += line_str.len() + 2; // +1 for newline
-                            eprintln!("after:{}", self.position);
-                        } else {
-                            eprintln!("valid?{valid}, elements?{:?}", elements);
-                        }
-                    }
-                    Some('$') => {
-                        // Bulk string (RDB file transfer)
-                        let rdb_len = match line_str[1..].trim().parse::<usize>() {
-                            Ok(n) => n,
-                            Err(_) => continue,
-                        };
-
-                        // Skip RDB data
-                        let rdb_start = self.position + line_str.len() + 1;
-                        let rdb_end = rdb_start + rdb_len + 1; // +2 for \r\n
-
-                        if self.buffer.len() >= rdb_end {
-                            eprintln!("SHOULDNT BE MOVING RDB END");
-                            self.position = rdb_end;
-                            eprintln!("AFTER MOVING ILLEGAL RDB END:{}", self.position);
-                        } else {
-                            break; // Wait for more data
-                        }
-                    }
-                    _ => continue, // Skip other RESP types
-                }
-            }
-
-            Ok(if !commands.is_empty() {
-                Some(commands)
-            } else {
-                None
-            })
-        } else {
-            eprintln!(
-                "need to parse RDB, curr pos:{}, got string:{:?}",
-                self.position,
-                String::from_utf8_lossy(&self.buffer[self.position..])
-            );
-            self.handle_rdb_transfer()
-        }
-    }
-
-    fn handle_rdb_transfer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!("\n\nhandling buffer starting at pos:{}\n\n", self.position);
         let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         let mut commands = Vec::new();
@@ -219,7 +116,11 @@ impl RespConnection {
         while let Some(line) = lines.next() {
             if line.is_empty() {
                 //move past '\n'
-                eprint!("adding 1 to pos for empty line, before {}", self.position);
+                eprint!(
+                    "adding 1 to pos for empty line:{:?}, before {}",
+                    String::from_utf8_lossy(line.into()),
+                    self.position
+                );
                 self.position += 1;
                 eprintln!("after:{}", self.position);
                 continue;
@@ -243,12 +144,12 @@ impl RespConnection {
             eprintln!("line str valid {:?}", line_str);
             match line_str.chars().next() {
                 Some('*') => {
-                    eprintln!("\n\nMATCHED A LINE IN RDB!!???{:?}\n\n", line_str);
+                    eprintln!("\n\nMATCHED A RESP LINE!!{:?}\n\n", line_str);
                     let arr_length = match line_str[1..].trim().parse::<usize>() {
                         Ok(n) => n,
                         Err(_) => {
                             eprint!(
-                                "adding 1 to pos for error to usize line, before {}",
+                                "adding  pos for error in usize line, before {}",
                                 self.position
                             );
                             self.position += line_str.len() + 1;
@@ -258,6 +159,20 @@ impl RespConnection {
                     };
                     let mut elements = Vec::with_capacity(arr_length);
                     let mut valid = true;
+
+                    eprintln!(
+                        "adding to pos for arr length line:{:?} in resp arr before: {}",
+                        line_str, self.position
+                    );
+                    self.position += line_str.len() + 1; // +2 for \r\n since we split at CRLF
+                    eprintln!("after:{}", self.position);
+
+                    eprintln!(
+                        "adding to pos for each element's new line removed in the spli in resp arr:{:?} before: {}",
+                                arr_length, self.position
+                    );
+                    self.position += arr_length * 2 - 1; // +1 for \r
+                    eprintln!("after:{}", self.position);
 
                     for _ in 0..arr_length {
                         let size_line = match lines.next() {
@@ -273,6 +188,14 @@ impl RespConnection {
                                 break;
                             }
                         };
+
+                        eprintln!(
+                            "adding to pos for size line in resp arr:{:?} before: {}",
+                            size_line, self.position
+                        );
+                        self.position += size_line.len(); // +1 for \r
+                        eprintln!("after:{}", self.position);
+
                         if !size_line.starts_with('$') {
                             eprintln!("FAKE SIZE LINE");
                             valid = false;
@@ -286,6 +209,7 @@ impl RespConnection {
                                 break;
                             }
                         };
+
                         eprintln!("in resp got size:{size}, from size_line:{:?}", size_line);
                         let mut content = match lines.next() {
                             Some(line) => {
@@ -303,6 +227,13 @@ impl RespConnection {
                                 break;
                             }
                         };
+                        eprintln!(
+                            "adding to pos for content line in resp arr:{:?} before: {}",
+                            content, self.position
+                        );
+                        self.position += content.len(); // +1 for \n
+
+                        eprintln!("after:{}", self.position);
 
                         content = content.trim().to_string();
                         eprintln!("GOT content:{:?}", content);
@@ -318,12 +249,12 @@ impl RespConnection {
                     }
                     if valid && elements.len() == arr_length {
                         commands.push(elements);
-                        eprint!(
-                            "adding length + 1 for valide elements, pos, {}",
-                            self.position
-                        );
-                        self.position += line_str.len() + 1; // +1 for newline
-                        eprintln!("after, pos:{}", self.position)
+                        // eprint!(
+                        //     "adding length + 1 for valide elements, pos, {}",
+                        //     self.position
+                        // );
+                        // self.position += line_str.len() + 1; // +1 for newline
+                        // eprintln!("after, pos:{}", self.position)
                     }
                 }
                 Some('$') => {
@@ -348,7 +279,7 @@ impl RespConnection {
                         "adding to length for final line, before pos{:?}",
                         self.position
                     );
-                    let rdb_start = self.position + line_str.len() + 2; // +2 for \r\n
+                    let rdb_start = self.position + line_str.len() + 1; // +2 for \r\n
                     eprintln!("after, pos:{}", self.position);
                     let rdb_end = rdb_start + rdb_len;
                     eprintln!(
@@ -361,7 +292,7 @@ impl RespConnection {
                         "PARSED RDB IN STR:{:?}",
                         String::from_utf8_lossy(&rdb_bytes)
                     );
-                    //self.decode_rdb(rdb_bytes);
+                    self.decode_rdb(rdb_bytes);
 
                     if self.buffer.len() >= rdb_end {
                         self.position = rdb_end; // Move pointer forward
