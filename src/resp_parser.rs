@@ -293,7 +293,7 @@ impl RespConnection {
                         "PARSED RDB IN STR:{:?}",
                         String::from_utf8_lossy(&rdb_bytes)
                     );
-                    self.decode_rdb(rdb_bytes);
+                    //self.decode_rdb(rdb_bytes);
 
                     if self.buffer.len() >= rdb_end {
                         self.position = rdb_end; // Move pointer forward
