@@ -29,7 +29,8 @@ impl BroadCastInfo {
         }
     }
 
-    pub fn add_connection(&mut self, stream: Arc<Mutex<TcpStream>>) -> usize {
+    //pub fn add_connection(&mut self, stream: Arc<Mutex<TcpStream>>) -> usize {
+    pub fn add_connection(&mut self, stream: TcpStream) -> usize {
         let id = self.next_id;
         self.connections.push(RespConnection {
             //stream: Arc::new(Mutex::new(stream)),
@@ -40,8 +41,8 @@ impl BroadCastInfo {
         self.next_id += 1;
         id
     }
-    pub fn broadcast_command(&self, command: &[String]) {
-        for conn in &self.connections {
+    pub fn broadcast_command(&mut self, command: &[String]) {
+        for conn in &mut self.connections {
             if let Err(e) = conn.broadcast_command(command) {
                 eprintln!("Broadcast failed: {}", e);
                 // Handle disconnection if needed
@@ -50,20 +51,23 @@ impl BroadCastInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RespConnection {
-    pub stream: Arc<Mutex<TcpStream>>,
+    //pub stream: Arc<Mutex<TcpStream>>,
+    stream: TcpStream,
     pub buffer: Vec<u8>,
     pub position: usize,
 }
 
 impl RespConnection {
-    pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
-        {
-            let lk = stream.lock().unwrap();
-            lk.set_nonblocking(true)
-                .expect("Failed to set non-blocking");
-        }
+    //pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
+    pub fn new(stream: TcpStream) -> Self {
+        // {
+        //     let lk = stream.lock().unwrap();
+        //     lk.set_nonblocking(true)
+        //         .expect("Failed to set non-blocking");
+        // }
+        stream.set_nonblocking(true).unwrap();
         RespConnection {
             stream: stream,
             buffer: Vec::new(),
@@ -71,15 +75,15 @@ impl RespConnection {
         }
     }
 
-    pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<String>>> {
+    pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         // Read available data
         eprintln!("TRYING TO READ COMMAND");
         {
             eprintln!("locking stream in read");
-            let mut stream = self.stream.lock().unwrap();
+            //let mut stream = self.stream.lock().unwrap();
             let mut temp_buf = [0; 4096];
 
-            match stream.read(&mut temp_buf) {
+            match self.stream.read(&mut temp_buf) {
                 Ok(0) => {
                     eprintln!("found nothing");
                     return Ok(None);
@@ -87,7 +91,7 @@ impl RespConnection {
                 Ok(n) => {
                     eprintln!(
                         "Found {n} bytes, {:?}",
-                        String::from_utf8_lossy(&temp_buf[..n])
+                        String::from_utf8(temp_buf[..n].into())
                     );
                     self.buffer.extend_from_slice(&temp_buf[..n]);
                 }
@@ -95,7 +99,10 @@ impl RespConnection {
                     eprintln!("Error {e}");
                     return Ok(None);
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    eprintln!("BIG ERROR:{e}");
+                    return Err(e);
+                }
             }
         }
         eprintln!("AFTER locking stream in read");
@@ -104,32 +111,41 @@ impl RespConnection {
         self.parse_buffer()
     }
 
-    pub fn write_to_stream(&self, buf: &[u8]) {
+    pub fn write_to_stream(&mut self, buf: &[u8]) {
         eprintln!("locking stream in write");
-        let mut stream = self.stream.lock().unwrap();
-        eprintln!("writing:{:?}", String::from_utf8_lossy(buf));
-        stream
+        eprintln!("writing:{:?}", String::from_utf8(buf.into()));
+        self.stream
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
         eprintln!("AFTER STREAM LOCK in write");
     }
-    fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<String>>> {
+
+    fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!("PARSING BUFFER");
-        let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
+        //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
+        let parsed_string = String::from_utf8(self.buffer[self.position..].into())
+            .expect("FAILED TO CONVERT  STREAM TO STRING");
+
+        let mut lines = parsed_string.split("\r\n");
         let mut commands = Vec::new();
 
-        while let Some(line) = lines.next() {
-            if line.is_empty() {
+        while let Some(line_str) = lines.next() {
+            eprintln!("checking line:{line_str}");
+            if line_str.is_empty() {
+                //eprintln!("EMPTY  BREAKING");
+                //break;
+                eprintln!("EMPTY CONTINUE");
                 continue;
             }
 
-            let line_str = match String::from_utf8(line.to_vec()) {
-                Ok(s) => s,
-                Err(_) => continue, // Skip invalid UTF-8
-            };
+            // let line_str = match String::from_utf8(line.to_vec()) {
+            //     Ok(s) => s,
+            //     Err(_) => continue, // Skip invalid UTF-8
+            // };
 
             match line_str.chars().next() {
                 Some('*') => {
+                    eprintln!("in RESP array type");
                     // Array type
                     let arr_length = match line_str[1..].trim().parse::<usize>() {
                         Ok(n) => n,
@@ -139,24 +155,28 @@ impl RespConnection {
                     let mut elements = Vec::with_capacity(arr_length);
                     let mut valid = true;
 
+                    eprintln!("checking resp array of size:{arr_length}");
                     for _ in 0..arr_length {
                         // Get bulk string header ($<length>)
-                        let size_line = match lines.next() {
-                            Some(line) => match String::from_utf8(line.to_vec()) {
-                                Ok(s) => s,
-                                Err(_) => {
-                                    valid = false;
-                                    break;
-                                }
-                            },
-                            None => {
-                                valid = false;
-                                break;
-                            }
-                        };
+                        // let size_line = match lines.next() {
+                        //     Some(line) => match String::from_utf8(line.to_vec()) {
+                        //         Ok(s) => s,
+                        //         Err(_) => {
+                        //             valid = false;
+                        //             break;
+                        //         }
+                        //     },
+                        //     None => {
+                        //         valid = false;
+                        //         break;
+                        //     }
+                        // };
 
+                        let size_line = lines.next().unwrap();
+                        eprintln!("got size line:{size_line}");
                         if !size_line.starts_with('$') {
                             valid = false;
+                            eprintln!("setting false");
                             break;
                         }
 
@@ -169,31 +189,35 @@ impl RespConnection {
                             }
                         };
 
-                        let content = match lines.next() {
-                            Some(line) => match String::from_utf8(line.to_vec()) {
-                                Ok(s) => s,
-                                Err(_) => {
-                                    valid = false;
-                                    break;
-                                }
-                            },
-                            None => {
+                        // let content = match lines.next() {
+                        //     Some(line) => match String::from_utf8(line.to_vec()) {
+                        //         Ok(s) => s,
+                        //         Err(_) => {
+                        //             valid = false;
+                        //             break;
+                        //         }
+                        //     },
+                        //     None => {
+                        //         valid = false;
+                        //         break;
+                        //     }
+                        // };
+                        if let Some(content) = lines.next() {
+                            if content.len() != size {
                                 valid = false;
                                 break;
                             }
+                            eprintln!("got content:{content}");
+                            elements.push(content.to_string());
                         };
-
-                        if content.len() != size {
-                            valid = false;
-                            break;
-                        }
-
-                        elements.push(content);
+                        //elements.push(content);
                     }
 
                     if valid && elements.len() == arr_length {
                         commands.push(elements);
                         self.position += line_str.len() + 1; // +1 for newline
+                    } else {
+                        eprintln!("valid?{valid}, elements?{:?}", elements);
                     }
                 }
                 Some('$') => {
@@ -216,19 +240,21 @@ impl RespConnection {
                 _ => continue, // Skip other RESP types
             }
         }
+        eprintln!("AFTER parse buffer while, commands{:?}", commands);
 
         Ok(if !commands.is_empty() {
-            Some(commands.remove(0))
+            Some(commands)
         } else {
             None
         })
     }
 
-    pub fn broadcast_command(&self, command: &[String]) -> std::io::Result<()> {
+    pub fn broadcast_command(&mut self, command: &[String]) -> std::io::Result<()> {
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
         let resp = self.format_resp_array(&s);
-        let mut stream = self.stream.lock().unwrap();
-        stream.write_all(&resp)
+        // let mut stream = self.stream.lock().unwrap();
+        //stream.write_all(&resp)
+        self.stream.write_all(&resp)
     }
 
     pub fn format_resp_array(&self, elements: &[&str]) -> Vec<u8> {
