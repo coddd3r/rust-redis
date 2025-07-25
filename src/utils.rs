@@ -1,10 +1,5 @@
-use crate::BroadCastInfo;
-use codecrafters_redis::print_hex::print_hex_dump;
-use codecrafters_redis::{
-    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
-    RedisValue,
-};
 use rand::Rng;
+use std::error::Error;
 use std::io::{prelude::*, BufReader};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -13,6 +8,14 @@ use std::time::SystemTime;
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::time::UNIX_EPOCH;
+
+use codecrafters_redis::print_hex::print_hex_dump;
+use codecrafters_redis::{
+    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
+    RedisValue,
+};
+
+use crate::resp_parser::BroadCastInfo;
 
 pub fn get_bulk_string(res: &str) -> Vec<u8> {
     //fn get_bulk_string(res: &str) -> &[u8] {
@@ -180,9 +183,9 @@ pub fn read_response(st: &TcpStream, n: Option<usize>) -> String {
     let _ = buf_reader.read_line(&mut use_buf);
 
     if let Some(r) = n {
-        //eprintln!("{r}th");
+        eprintln!("{r}th");
     }
-    ////eprintln!(" finished reading response from stream: {use_buf}");
+    eprintln!(" finished reading response from stream: {use_buf}");
     use_buf
 }
 
@@ -206,37 +209,73 @@ pub fn get_port(stream: &TcpStream) -> Option<String> {
     }
 }
 
-pub fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
-    //eprintln!("in BROADCAST, info:{:?}", b_info);
-
-    let broadcast_bytes = write_resp_arr(
-        cmd.iter()
-            .filter(|e| !e.starts_with('$'))
-            .map(|e| e.as_str())
-            .collect::<Vec<_>>(),
-    );
-
-    let (conn, client_ports) = {
-        let curr_info = b_info.lock().unwrap();
-        (curr_info.connections.clone(), curr_info.ports.clone())
-    };
-
-    for (i, conn) in conn.iter().enumerate() {
-        let mut c = conn.stream.lock().unwrap();
-        //eprintln!(
-        //     "in client streams, port:{}, stream:{:?}",
-        //     client_ports[i], c
-        // );
-        //eprintln!(
-        //     "broadcast MESSAGE: {:?}",
-        //     String::from_utf8(broadcast_bytes.clone()).unwrap()
-        // );
-        c.write_all(&broadcast_bytes)
-            .expect("FAILED TO PING master");
-        //eprintln!("wrote broadcst to port");
+pub fn config_response(
+    config_command: String,
+    config_field: String,
+    stream: &mut TcpStream,
+    dir: Option<String>,
+    db_filename: Option<String>,
+) -> Result<(), Box<dyn Error>> {
+    match config_command.as_str() {
+        "get" => match config_field.as_str() {
+            "dir" => {
+                if let Some(dir_name) = &dir {
+                    let resp = write_resp_arr(vec![&config_field, dir_name]);
+                    stream.write_all(&resp).unwrap();
+                } else {
+                    stream.write_all(crate::RESP_NULL)?;
+                }
+            }
+            "dbfilename" => {
+                if let Some(db_name) = &db_filename {
+                    let resp = write_resp_arr(vec![&config_field, db_name]);
+                    stream.write_all(&resp).unwrap();
+                } else {
+                    stream.write_all(crate::RESP_NULL)?;
+                }
+            }
+            _ => {
+                eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+            }
+        },
+        _ => {
+            eprintln!("UNRECOGNIZED CONFIG COMMAND")
+        }
     }
-    //eprintln!("after clients lopp in broadcast");
+    Ok(())
 }
+
+//pub fn broadcast_commands(cmd: &[String], b_info: &Arc<Mutex<BroadCastInfo>>) {
+//    //eprintln!("in BROADCAST, info:{:?}", b_info);
+//
+//    let broadcast_bytes = write_resp_arr(
+//        cmd.iter()
+//            .filter(|e| !e.starts_with('$'))
+//            .map(|e| e.as_str())
+//            .collect::<Vec<_>>(),
+//    );
+//
+//    let (conn, client_ports) = {
+//        let curr_info = b_info.lock().unwrap();
+//        (curr_info.connections.clone(), curr_info.ports.clone())
+//    };
+//
+//    for (i, conn) in conn.iter().enumerate() {
+//        let mut c = conn.stream.lock().unwrap();
+//        //eprintln!(
+//        //     "in client streams, port:{}, stream:{:?}",
+//        //     client_ports[i], c
+//        // );
+//        //eprintln!(
+//        //     "broadcast MESSAGE: {:?}",
+//        //     String::from_utf8(broadcast_bytes.clone()).unwrap()
+//        // );
+//        c.write_all(&broadcast_bytes)
+//            .expect("FAILED TO PING master");
+//        //eprintln!("wrote broadcst to port");
+//    }
+//    //eprintln!("after clients lopp in broadcast");
+//}
 
 pub fn handle_set(
     k: String,
@@ -288,7 +327,7 @@ pub fn handle_set(
         let mut lk = new_db.lock().unwrap();
         lk.insert(k.clone(), use_insert);
         let res = lk.get(&k);
-        //eprintln!("IN HANDLE SET FUNCTION, AFTER LOCK GET RES: {:?}", res);
+        eprintln!("IN HANDLE SET FUNCTION, AFTER LOCK GET RES: {:?}", res);
     }
     Ok(())
 }
@@ -318,6 +357,7 @@ pub fn handle_get(
     }
     Ok(())
 }
+
 //fn get_simple_string(s: &str) -> Vec<u8> {
 //    [b"+", s.as_bytes(), b"\r\n"].concat()
 //}
