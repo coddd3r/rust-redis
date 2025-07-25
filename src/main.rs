@@ -243,7 +243,7 @@ fn handle_client(
     //let mut conn = RespConnection::new(Arc::clone(&stream));
     let mut conn = RespConnection::new(stream.try_clone().unwrap());
     if sent_by_main {
-        eprintln!("\n\nHANDLING HANDSHAKE\n\n");
+        eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]));
         let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
@@ -260,29 +260,6 @@ fn handle_client(
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
         let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
-
-        // if first_line.is_empty() {
-        //     eprintln!("EMPTY FIRST LINE IN RDB RECEIVED");
-        // } else {
-        //     eprintln!("IN HANDSHAKE READING FROM STREAM WITH SIZE:{first_line}");
-        //     let rdb_len = first_line[1..]
-        //         .trim()
-        //         .parse::<usize>()
-        //         .expect("failed to parse rdb length");
-
-        //     //let rdb_bytes = read_db_from_stream(&first_line[1..], bulk_reader);
-        //     eprintln!("IGNORING RDB BYTES");
-        //     //bulk_reader.consume(rdb_len);
-
-        //     let mut received_rdb: Vec<u8> = vec![0u8; rdb_len];
-
-        //     bulk_reader
-        //         .read_exact(&mut received_rdb)
-        //         .expect("FAILE TO READ RDB IN HANDSHAKE");
-
-        //     //eprintln!("RDB IN HANDSHAKE:{:?}", rdb_bytes);
-        //     //decode_rdb(rdb_bytes);
-        // }
     }
 
     loop {
@@ -311,7 +288,8 @@ fn handle_client(
                         }
 
                         "set" => {
-                            eprintln!("IN handle client SET");
+                            eprintln!("IN handle client SET,");
+                            eprintln!("sent by MAIN:{sent_by_main}");
 
                             if all_lines.len() < 3 {
                                 conn.write_to_stream(RESP_NULL);
@@ -337,7 +315,7 @@ fn handle_client(
                                 use_time = Some((all_lines[3].as_str(), all_lines[4].as_str()));
                             }
                             let r = handle_set(k, v, new_db, use_time);
-                            if r.is_ok() {
+                            if r.is_ok() && !sent_by_main {
                                 eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 conn.write_to_stream(RESP_OK);
                             }
@@ -562,6 +540,7 @@ fn handle_client(
                                 b"\r\n",
                             ]
                             .concat();
+
                             {
                                 let mut lk = broadcast_info.lock().unwrap();
                                 lk.connections
@@ -569,6 +548,7 @@ fn handle_client(
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
                                 //stream.write_all(&resync_response)?;
+                                eprintln!("\n\n\nGOT HANDSHAKE??\n\n\n");
                                 eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
                                 s.write_to_stream(&resync_response);
 

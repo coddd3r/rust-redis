@@ -76,28 +76,29 @@ impl RespConnection {
 
     pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         // Read available data
-        {
-            //let mut stream = self.stream.lock().unwrap();
-            let mut temp_buf = [0; 4096];
 
-            match self.stream.read(&mut temp_buf) {
-                Ok(0) => {
-                    return Ok(None);
-                }
-                Ok(n) => {
-                    eprintln!(
-                        "Found {n} bytes, {:?}",
-                        String::from_utf8(temp_buf[..n].into())
-                    );
-                    self.buffer.extend_from_slice(&temp_buf[..n]);
-                }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    return Ok(None);
-                }
-                Err(e) => {
-                    eprintln!("BIG ERROR:{e}");
-                    return Err(e);
-                }
+        //let mut stream = self.stream.lock().unwrap();
+        let mut temp_buf = [0; 4096];
+
+        match self.stream.read(&mut temp_buf) {
+            Ok(0) => {
+                std::thread::sleep(Duration::from_millis(10));
+                return Ok(None);
+            }
+            Ok(n) => {
+                eprintln!(
+                    "Found {n} bytes, {:?}",
+                    String::from_utf8(temp_buf[..n].into())
+                );
+                self.buffer.extend_from_slice(&temp_buf[..n]);
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(20));
+                return Ok(None);
+            }
+            Err(e) => {
+                eprintln!("BIG ERROR:{e}");
+                return Err(e);
             }
         }
         eprintln!("AFTER stream in read");
@@ -108,6 +109,7 @@ impl RespConnection {
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!("PARSING BUFFER, starting at pos:{}", self.position);
+        eprintln!("CURR BUFFER:{:?}", String::from_utf8_lossy(&self.buffer));
         //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
             let mut lines = parsed_string.split("\r\n");
@@ -179,7 +181,7 @@ impl RespConnection {
 
                         // Skip RDB data
                         let rdb_start = self.position + line_str.len() + 1;
-                        let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
+                        let rdb_end = rdb_start + rdb_len + 4; // +2 for \r\n
 
                         if self.buffer.len() >= rdb_end {
                             eprintln!("SHOULDNT BE MOVING RDB END");
@@ -204,63 +206,6 @@ impl RespConnection {
                 String::from_utf8_lossy(&self.buffer[self.position..])
             );
             self.handle_rdb_transfer()
-            // let mut current_pos = self.position;
-            // let mut n = 10;
-            // while current_pos < self.buffer.len() {
-            //     //eprintln!("in RDB loop");
-            //     // Find the next newline
-            //     if let Some(line_end) = self.buffer[current_pos..].iter().position(|&b| b == b'\n')
-            //     {
-            //         //   eprintln!("if satisfied");
-            //         let line = &self.buffer[current_pos..current_pos + line_end];
-            //         //move past new line
-            //         current_pos = line_end + 1;
-            //         if line.is_empty() {
-            //             eprintln!("empty line");
-            //             continue;
-            //         }
-            //         let line_str = match String::from_utf8(line.to_vec()) {
-            //             Ok(s) => s,
-            //             Err(_) => continue, // Skip invalid UTF-8
-            //         };
-            //         if n > 0 {
-            //             eprintln!("curr line_str: {:?}, line end:{line_end}", line_str);
-
-            //             n -= 1;
-            //         }
-            //         let use_char = line_str.chars().nth(0);
-            //         match use_char {
-            //             Some('$') => {
-            //                 eprintln!("FOUND LENGTH LINE");
-            //                 let rdb_len = match line_str[1..].trim().parse::<usize>() {
-            //                     Ok(n) => n,
-            //                     Err(_) => continue,
-            //                 };
-            //                 // Skip RDB data
-            //                 let rdb_start = self.position + line_str.len() + 1;
-            //                 let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
-
-            //                 if self.buffer.len() >= rdb_end {
-            //                     self.position = rdb_end;
-            //                 } else {
-            //                     break; // Wait for more data
-            //                 }
-            //                 eprintln!(
-            //                     "after handling rdb, buffer:{:?}",
-            //                     String::from_utf8_lossy(&self.buffer[self.position..])
-            //                 )
-            //             }
-            //             Some(_) => {
-            //                 if n > 0 {
-            //                     eprintln!("other some with {:?}", use_char)
-            //                 }
-            //                 continue;
-            //             }
-            //             None => unreachable!(),
-            //         }
-            //     }
-            // }
-            // Ok(None)
         }
     }
 
@@ -401,7 +346,7 @@ impl RespConnection {
                         "adding to length for final line, before pos{:?}",
                         self.position
                     );
-                    let rdb_start = self.position + line_str.len() + 2; // +2 for \r\n
+                    let rdb_start = self.position + line_str.len() + 4; // +2 for \r\n
                     eprintln!("after, pos:{}", self.position);
                     let rdb_end = rdb_start + rdb_len; // + 2;
                     eprintln!(
@@ -433,7 +378,12 @@ impl RespConnection {
                 }
             }
         }
-        eprintln!("AFTER RDB commands?{:?}, pos:{}", commands, self.position);
+        eprintln!(
+            "AFTER RDB commands?{:?}, pos:{}, buffer len:{}",
+            commands,
+            self.position,
+            self.buffer.len()
+        );
         Ok(Some(commands))
     }
     pub fn broadcast_command(&mut self, command: &[String]) {
@@ -463,7 +413,6 @@ impl RespConnection {
         self.stream
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
-        std::thread::sleep(Duration::from_millis(50));
         eprintln!("AFTER STREAM in write");
     }
 
