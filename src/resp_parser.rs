@@ -110,7 +110,7 @@ impl RespConnection {
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!("PARSING BUFFER, starting at pos:{}", self.position);
-        eprintln!("CURR BUFFER:{:?}", String::from_utf8_lossy(&self.buffer));
+        eprintln!("WHOLE BUFFER:{:?}", String::from_utf8_lossy(&self.buffer));
         //let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         if let Ok(parsed_string) = String::from_utf8(self.buffer[self.position..].into()) {
             let mut lines = parsed_string.split("\r\n");
@@ -203,7 +203,8 @@ impl RespConnection {
             })
         } else {
             eprintln!(
-                "need to parse RDB, got string:{:?}",
+                "need to parse RDB, curr pos:{}, got string:{:?}",
+                self.position,
                 String::from_utf8_lossy(&self.buffer[self.position..])
             );
             self.handle_rdb_transfer()
@@ -211,7 +212,7 @@ impl RespConnection {
     }
 
     fn handle_rdb_transfer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        eprintln!("\n\nhandling rdb starting at pos:{}\n\n", self.position);
+        eprintln!("\n\nhandling buffer starting at pos:{}\n\n", self.position);
         let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         let mut commands = Vec::new();
 
@@ -365,6 +366,7 @@ impl RespConnection {
                     if self.buffer.len() >= rdb_end {
                         self.position = rdb_end; // Move pointer forward
                         eprintln!("POSITION AFTER RDB:{}", self.position);
+
                         break;
                     } else {
                         eprintln!("\n\nBREAK??\n\n");
@@ -385,7 +387,11 @@ impl RespConnection {
             self.position,
             self.buffer.len()
         );
-        Ok(Some(commands))
+        if self.position < self.buffer.len() {
+            self.parse_buffer()
+        } else {
+            Ok(Some(commands))
+        }
     }
     pub fn broadcast_command(&mut self, command: &[String]) {
         eprintln!("got signal to propagate to stream:{:?}", self.stream);

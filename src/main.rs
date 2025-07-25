@@ -329,7 +329,7 @@ fn handle_client(
                                 conn.write_to_stream(RESP_NULL);
                                 continue;
                             }
-                            eprintln!("IN handle client GET");
+                            eprintln!("IN handle client GET, db:{:?}", new_db);
                             let get_key = &all_lines[1];
                             {
                                 //eprintln!("in handle GET function before lock");
