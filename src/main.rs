@@ -553,11 +553,11 @@ fn handle_client(
                                 s.write_to_stream(&resync_response);
 
                                 eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
-                                //let dummy_rdb_path = env::current_dir().unwrap().join("empty.rdb");
-                                let dummy_rdb_path =
-                                    env::current_dir().unwrap().join("dump_dummy.rdb");
-                                create_dummy_rdb(&dummy_rdb_path.as_path())
-                                    .expect("FAILED TO MAKE DUMMY RDB");
+                                let dummy_rdb_path = env::current_dir().unwrap().join("empty.rdb");
+                                // let dummy_rdb_path =
+                                //     env::current_dir().unwrap().join("dump_dummy.rdb");
+                                // create_dummy_rdb(&dummy_rdb_path.as_path())
+                                //     .expect("FAILED TO MAKE DUMMY RDB");
                                 if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
                                     eprintln!("IN MASTER SENDING RDB");
                                     //stream

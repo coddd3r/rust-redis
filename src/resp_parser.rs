@@ -277,10 +277,11 @@ impl RespConnection {
 
                     eprintln!("found length {rdb_len}");
                     eprintln!(
-                        "adding to length for final line, before pos{:?}",
-                        self.position
+                        "adding to length for final line:{:?}, before pos{:?}",
+                        line_str, self.position
                     );
-                    let rdb_start = self.position + line_str.len() + 1; // +2 for \r\n
+                    let rdb_start = self.position + line_str.len() + 2; // +1 for \r
+                    self.position += line_str.len() + 2;
                     eprintln!("after, pos:{}", self.position);
                     let rdb_end = rdb_start + rdb_len;
                     eprintln!(
