@@ -43,10 +43,8 @@ impl BroadCastInfo {
     }
     pub fn broadcast_command(&mut self, command: &[String]) {
         for conn in &mut self.connections {
-            if let Err(e) = conn.broadcast_command(command) {
-                eprintln!("Broadcast failed: {}", e);
-                // Handle disconnection if needed
-            }
+            conn.broadcast_command(command)
+            // Handle disconnection if needed
         }
     }
 }
@@ -231,12 +229,12 @@ impl RespConnection {
         }
     }
 
-    pub fn broadcast_command(&mut self, command: &[String]) -> std::io::Result<()> {
+    pub fn broadcast_command(&mut self, command: &[String]) {
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
         let resp = self.format_resp_array(&s);
         // let mut stream = self.stream.lock().unwrap();
         //stream.write_all(&resp)
-        self.stream.write_all(&resp)
+        self.write_to_stream(&resp);
     }
 
     pub fn format_resp_array(&self, elements: &[&str]) -> Vec<u8> {
@@ -249,10 +247,15 @@ impl RespConnection {
 
     pub fn write_to_stream(&mut self, buf: &[u8]) {
         eprintln!(" stream in write");
-        eprintln!("writing:{:?}", String::from_utf8(buf.into()));
+        if let Ok(r) = String::from_utf8(buf.into()) {
+            eprintln!("writing to stream: {r}")
+        } else {
+            eprintln!("WRITING RDB");
+        };
         self.stream
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
+        //std::thread::sleep(Duration::from_millis(10));
         eprintln!("AFTER STREAM in write");
     }
 }

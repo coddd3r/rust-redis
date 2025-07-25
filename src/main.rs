@@ -242,19 +242,21 @@ fn handle_client(
     if master_port.is_some() {
         eprintln!("\n\nHANDLING HANDSHAKE\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]));
+        //std::thread::sleep(Duration::from_millis(50));
         let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
 
         let use_bytes = conn.format_resp_array(&[REPL_CONF, LISTENING_PORT, replica_port.unwrap()]);
         conn.write_to_stream(&use_bytes);
+        let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[REPL_CONF, "capa", "psync2"]));
-        let _ = conn.try_read_command();
+        let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
-        let _ = conn.try_read_command();
+        let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
 
         // if first_line.is_empty() {
@@ -295,6 +297,7 @@ fn handle_client(
             Ok(Some(commands)) => {
                 eprintln!("ALL COMMANDS:{:?}", commands);
                 for all_lines in commands {
+                    std::thread::sleep(Duration::from_millis(50));
                     if all_lines.len() <= 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
                         conn.write_to_stream(RESP_NULL);
@@ -604,7 +607,7 @@ fn handle_client(
                 }
             }
             Ok(None) => {
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
                 eprintln!("Connection error: {}", e);
