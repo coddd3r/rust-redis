@@ -115,10 +115,10 @@ impl RespConnection {
 
         while let Some(line) = lines.next() {
             if line.is_empty() {
-                //move past '\n'
+                //move past '\r'
                 eprint!(
                     "adding 1 to pos for empty line:{:?}, before {}",
-                    String::from_utf8_lossy(line.into()),
+                    String::from_utf8(line.into()).unwrap(),
                     self.position
                 );
                 self.position += 1;
@@ -130,12 +130,12 @@ impl RespConnection {
             let line_str = match String::from_utf8(line.to_vec()) {
                 Ok(s) => s,
                 Err(_) => {
-                    eprint!(
-                        "adding 1 to pos for error to utf8 line, before {}",
-                        self.position
-                    );
-                    self.position += line.len() + 1;
-                    eprintln!("after pos:{}", self.position);
+                    // eprint!(
+                    //     "adding 1 to pos for error to utf8 line, before {}",
+                    //     self.position
+                    // );
+                    // self.position += line.len() + 1;
+                    // eprintln!("after pos:{}", self.position);
 
                     continue;
                 } //if not valid utf8 keep going
@@ -145,6 +145,7 @@ impl RespConnection {
             match line_str.chars().next() {
                 Some('*') => {
                     eprintln!("\n\nMATCHED A RESP LINE!!{:?}\n\n", line_str);
+
                     let arr_length = match line_str[1..].trim().parse::<usize>() {
                         Ok(n) => n,
                         Err(_) => {
@@ -297,19 +298,21 @@ impl RespConnection {
                     if self.buffer.len() >= rdb_end {
                         self.position = rdb_end; // Move pointer forward
                         eprintln!("POSITION AFTER RDB:{}", self.position);
-
-                        break;
                     } else {
                         eprintln!("\n\nBREAK??\n\n");
                         break; // Wait for more data
                     }
                 }
-                _ => {
-                    eprint!("\nadding to pos in other curr:{}", self.position);
+                Some(_) => {
+                    eprint!(
+                        "\n\n\nadding to pos in other:{:?} curr:{:?}\n",
+                        line_str, self.position
+                    );
                     self.position += line_str.len();
                     eprintln!(" other NEXT:{}\n\n\n", self.position);
                     continue;
                 }
+                _ => continue,
             }
         }
         eprintln!(
@@ -318,11 +321,7 @@ impl RespConnection {
             self.position,
             self.buffer.len()
         );
-        if self.position < self.buffer.len() {
-            self.parse_buffer()
-        } else {
-            Ok(Some(commands))
-        }
+        Ok(Some(commands))
     }
     pub fn broadcast_command(&mut self, command: &[String]) {
         eprintln!("got signal to propagate to stream:{:?}", self.stream);
