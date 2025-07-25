@@ -255,7 +255,7 @@ impl RespConnection {
         self.stream
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
-        //std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(50));
         eprintln!("AFTER STREAM in write");
     }
 }

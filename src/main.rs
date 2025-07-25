@@ -242,7 +242,6 @@ fn handle_client(
     if master_port.is_some() {
         eprintln!("\n\nHANDLING HANDSHAKE\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]));
-        //std::thread::sleep(Duration::from_millis(50));
         let res = conn.try_read_command();
         eprintln!("Read result: {:?}", res);
 
