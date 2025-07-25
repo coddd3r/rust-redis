@@ -230,6 +230,7 @@ impl RespConnection {
     }
 
     pub fn broadcast_command(&mut self, command: &[String]) {
+        eprintln!("got signal to propagate to stream:{:?}", self.stream);
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
         let resp = self.format_resp_array(&s);
         // let mut stream = self.stream.lock().unwrap();

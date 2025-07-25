@@ -162,15 +162,15 @@ pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
 //        .for_each(|e| full_bytes.extend(get_bulk_string(e)));
 //    full_bytes
 //}
-//pub fn get_port(stream: &TcpStream) -> Option<String> {
-//    if let Ok(peer_addr) = stream.peer_addr() {
-//        println!("Accepted connection from: {}", peer_addr);
-//        Some(peer_addr.port().to_string())
-//    } else {
-//        println!("Unable to get peer address.");
-//        None
-//    }
-//}
+pub fn get_port(stream: &TcpStream) -> Option<String> {
+    if let Ok(peer_addr) = stream.peer_addr() {
+        println!("Accepted connection from: {}", peer_addr);
+        Some(peer_addr.port().to_string())
+    } else {
+        println!("Unable to get peer address.");
+        None
+    }
+}
 
 //pub fn config_response(
 //    config_command: String,
