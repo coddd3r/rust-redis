@@ -224,7 +224,53 @@ impl RespConnection {
                 None
             })
         } else {
-            eprintln!("need to parse RDB");
+            eprintln!(
+                "need to parse RDB, got string:{:?}",
+                String::from_utf8_lossy(&self.buffer[self.position..])
+            );
+
+            let mut current_pos = self.position;
+            while current_pos < self.buffer.len() {
+                // Find the next newline
+                if let Some(line_end) = self.buffer[current_pos..].iter().position(|&b| b == b'\n')
+                {
+                    let line = &self.buffer[current_pos..current_pos + line_end];
+                    //move past new line
+                    current_pos = line_end + 1;
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let line_str = match String::from_utf8(line.to_vec()) {
+                        Ok(s) => s,
+                        Err(_) => continue, // Skip invalid UTF-8
+                    };
+                    match line_str.chars().nth(0) {
+                        Some('$') => {
+                            let rdb_len = match line_str[1..].trim().parse::<usize>() {
+                                Ok(n) => n,
+                                Err(_) => continue,
+                            };
+                            // Skip RDB data
+                            let rdb_start = self.position + line_str.len() + 1;
+                            let rdb_end = rdb_start + rdb_len + 2; // +2 for \r\n
+
+                            if self.buffer.len() >= rdb_end {
+                                self.position = rdb_end;
+                            } else {
+                                break; // Wait for more data
+                            }
+                            eprintln!(
+                                "after handling rdb, buffer:{:?}",
+                                String::from_utf8_lossy(&self.buffer[self.position..])
+                            )
+                        }
+                        Some(_) => {
+                            continue;
+                        }
+                        None => unreachable!(),
+                    }
+                }
+            }
             Ok(None)
         }
     }
