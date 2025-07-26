@@ -7,6 +7,7 @@ use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
@@ -244,19 +245,24 @@ fn handle_client(
 
     //let mut conn = RespConnection::new(Arc::clone(&stream));
     let mut conn = RespConnection::new(stream.try_clone().unwrap());
+
     if sent_by_main {
+        conn.is_master = true;
         eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]));
         let res = conn.try_read_command();
+        sleep(Duration::from_millis(10));
         eprintln!("Read result: {:?}", res);
 
         let use_bytes = conn.format_resp_array(&[REPL_CONF, LISTENING_PORT, replica_port.unwrap()]);
         conn.write_to_stream(&use_bytes);
         let res = conn.try_read_command();
+        sleep(Duration::from_millis(10));
         eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[REPL_CONF, "capa", "psync2"]));
         let res = conn.try_read_command();
+        sleep(Duration::from_millis(10));
         eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
@@ -562,9 +568,9 @@ fn handle_client(
 
                             {
                                 let mut lk = broadcast_info.lock().unwrap();
-                                let mut master_stream =
+                                let master_stream =
                                     RespConnection::new(stream.try_clone().unwrap());
-                                master_stream.is_master = true;
+                                //master_stream.is_master = true;
                                 lk.connections.push(master_stream);
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
