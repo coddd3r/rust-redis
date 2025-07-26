@@ -375,7 +375,7 @@ impl RespConnection {
         sleep(Duration::from_millis(5));
     }
 
-    pub fn get_simple_str(s: &str) -> Vec<u8> {
+    pub fn get_simple_str(&self, s: &str) -> Vec<u8> {
         let ret = format!("+{s}\r\n");
         ret.as_bytes().into()
     }

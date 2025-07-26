@@ -26,8 +26,7 @@ mod utils;
 use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
-//use crate::utils::{config_response, decode_bulk_string, get_bulk_string, handle_get, handle_set};
-use crate::utils::{get_port, handle_set};
+use crate::utils::{get_bulk_string, get_port, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
 
@@ -72,6 +71,8 @@ fn main() {
     let new_db = RedisDatabase::new();
 
     let mut new_db = Arc::new(Mutex::new(new_db));
+    let streams_db: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let streams_db = Arc::new(Mutex::new(streams_db));
 
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
@@ -136,7 +137,7 @@ fn main() {
                                 let short_port = short_port.clone();
                                 //let use_stream = Arc::clone(&s);
                                 let use_stream = conn.try_clone().unwrap();
-
+                                let st_db = Arc::clone(&streams_db);
                                 stream_pool.execute(move || {
                                     let res = handle_client(
                                         use_stream,
@@ -146,7 +147,8 @@ fn main() {
                                         b_info,
                                         &Some(short_port.as_str()),
                                         &m_port,
-                                        &use_db,
+                                        use_db,
+                                        st_db,
                                     );
                                     match res {
                                         Ok(_) => {}
@@ -199,7 +201,7 @@ fn main() {
                 let s = _stream.try_clone().unwrap();
 
                 let short_port = short_port.clone();
-
+                let st_db = Arc::clone(&streams_db);
                 stream_pool.execute(move || {
                     let res = handle_client(
                         s,
@@ -209,7 +211,8 @@ fn main() {
                         b_info,
                         &Some(short_port.as_str()),
                         &m_port,
-                        &use_db,
+                        use_db,
+                        st_db,
                     );
                     match res {
                         Ok(_) => {}
@@ -236,7 +239,8 @@ fn handle_client(
     broadcast_info: Arc<Mutex<BroadCastInfo>>,
     replica_port: &Option<&str>,
     master_port: &Option<String>,
-    new_db: &Arc<Mutex<RedisDatabase>>,
+    new_db: Arc<Mutex<RedisDatabase>>,
+    entry_streams: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -338,7 +342,7 @@ fn handle_client(
                             if all_lines.len() > 4 {
                                 use_time = Some((all_lines[3].as_str(), all_lines[4].as_str()));
                             }
-                            let r = handle_set(k, v, new_db, use_time);
+                            let r = handle_set(k, v, &new_db, use_time);
                             if r.is_ok() && !sent_by_main {
                                 eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 conn.write_to_stream(RESP_OK);
@@ -702,11 +706,33 @@ fn handle_client(
                         "type" => {
                             let key = &all_lines[1];
 
-                            if new_db.lock().unwrap().get(key).is_some() {
-                                conn.write_to_stream(STRING);
-                            } else {
-                                conn.write_to_stream(NONE_TYPE);
+                            {
+                                if new_db.lock().unwrap().get(key).is_some() {
+                                    conn.write_to_stream(STRING);
+                                    continue;
+                                }
                             }
+
+                            {
+                                if entry_streams.lock().unwrap().get(key).is_some() {
+                                    conn.write_to_stream(&conn.get_simple_str("stream"));
+                                    continue;
+                                }
+                            }
+                            conn.write_to_stream(NONE_TYPE);
+                        }
+
+                        "xadd" => {
+                            let key = all_lines[2].clone();
+                            let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
+                            let _ = entry_streams
+                                .lock()
+                                .unwrap()
+                                .entry(key)
+                                .or_insert(HashMap::new())
+                                .insert(k, v);
+
+                            conn.write_to_stream(&get_bulk_string("0-1"));
                         }
 
                         "command" => {
