@@ -141,6 +141,7 @@ impl RespConnection {
 
             eprintln!("line str valid {:?}", line_str);
             match line_str.chars().next() {
+                // Resp array section
                 Some('*') => {
                     eprintln!("\n\nMATCHED A RESP LINE!!{:?}\n\n", line_str);
 
@@ -232,6 +233,7 @@ impl RespConnection {
                         commands.push(elements);
                     }
                 }
+
                 Some('$') => {
                     // AT START OF RDB TRANSFER
                     eprintln!("ACTUAL RDB SECTION");
@@ -266,6 +268,8 @@ impl RespConnection {
                     //     break; // Wait for more data
                     // }
                     eprintln!("POSITION AFTER RDB:{}", self.position);
+                    self.position = rdb_end;
+                    break;
                 }
                 Some(_) => {
                     continue;
