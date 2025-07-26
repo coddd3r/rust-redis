@@ -701,7 +701,8 @@ fn handle_client(
 
                         "type" => {
                             let key = &all_lines[1];
-                            if key.len() > 0 {
+
+                            if new_db.lock().unwrap().get(key).is_some() {
                                 conn.write_to_stream(STRING);
                             } else {
                                 conn.write_to_stream(NONE_TYPE);
