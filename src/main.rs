@@ -62,7 +62,7 @@ fn main() {
     let mut port_found = false;
     let mut short_port = String::new();
 
-    let stream_pool = ThreadPool::new(4);
+    let stream_pool = ThreadPool::new(15);
     let mut master_port: Option<String> = None;
     //let mut master_conn: Option<TcpStream> = None;
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(BroadCastInfo::new()));
