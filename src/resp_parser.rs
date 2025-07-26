@@ -375,6 +375,11 @@ impl RespConnection {
         sleep(Duration::from_millis(5));
     }
 
+    pub fn get_simple_str(s: &str) -> Vec<u8> {
+        let ret = format!("+{s}\r\n");
+        ret.as_bytes().into()
+    }
+
     // pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
     //     eprintln!("DECODING RDB BYTES RECEIVED");
     //     eprintln!(

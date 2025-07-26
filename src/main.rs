@@ -47,6 +47,8 @@ const DEFAULT_PORT: &str = "6379";
 
 const RESP_OK: &[u8; 5] = b"+OK\r\n";
 const RESP_NULL: &[u8; 5] = b"$-1\r\n";
+const STRING: &[u8] = "+string\r\n".as_bytes();
+const NONE_TYPE: &[u8] = "+none\r\n".as_bytes();
 
 fn main() {
     let id = utils::random_id_gen();
@@ -694,6 +696,15 @@ fn handle_client(
                                 eprintln!("after threads");
                             } else {
                                 conn.write_to_stream(format!(":{}\r\n", num_repls).as_bytes());
+                            }
+                        }
+
+                        "type" => {
+                            let key = &all_lines[1];
+                            if key.len() > 0 {
+                                conn.write_to_stream(STRING);
+                            } else {
+                                conn.write_to_stream(NONE_TYPE);
                             }
                         }
 
