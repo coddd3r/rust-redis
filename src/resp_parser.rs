@@ -109,172 +109,206 @@ impl RespConnection {
     }
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        eprintln!("\n\nhandling buffer starting at pos:{}\n\n", self.position);
+        eprintln!(
+            "\n\n START: handling buffer starting at pos:{}\n\n",
+            self.position
+        );
         eprintln!(
             "buffer as str:{:?}",
             String::from_utf8_lossy(&self.buffer[self.position..])
         );
-        let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
         let mut commands = Vec::new();
 
-        while let Some(line) = lines.next() {
-            if line.is_empty() {
-                continue;
-            }
-
+        loop {
             eprintln!(
-                "adding length:{} for line:{:?}, pos before:{}",
-                line.len() + 1,
-                String::from_utf8_lossy(&line),
+                "\n\n LOOP: handling buffer starting at pos:{}\n\n",
                 self.position
             );
+            eprintln!(
+                "buffer as str:{:?}",
+                String::from_utf8_lossy(&self.buffer[self.position..])
+            );
+            let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
 
-            self.position += line.len() + 1;
-            eprintln!("after:{}", self.position);
-            eprintln!("checking line:{:?}", String::from_utf8_lossy(line.into()));
-            let line_str = match String::from_utf8(line.to_vec()) {
-                Ok(s) => s,
-                Err(_) => {
+            while let Some(line) = lines.next() {
+                if line.is_empty() {
+                    // eprintln!(
+                    //     "adding length:{} for line:{:?}, pos before:{:?}",
+                    //     line.len() + 1,
+                    //     String::from_utf8_lossy(&line),
+                    //     self.position
+                    // );
+                    // self.position += 1;
+                    // eprintln!("after:{}", self.position);
+                    eprintln!("empty_line");
                     continue;
-                } //if not valid utf8 keep going
-            };
+                }
+                self.position += line.len() + 1;
+                eprintln!("after:{}", self.position);
+                eprintln!("checking line:{:?}", String::from_utf8_lossy(line.into()));
+                let line_str = match String::from_utf8(line.to_vec()) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        continue;
+                    } //if not valid utf8 keep going
+                };
 
-            eprintln!("line str valid {:?}", line_str);
-            match line_str.chars().next() {
-                // Resp array section
-                Some('*') => {
-                    eprintln!("\n\nMATCHED A RESP LINE!!{:?}\n\n", line_str);
+                eprintln!("line str valid {:?}", line_str);
+                match line_str.chars().next() {
+                    // Resp array section
+                    Some('*') => {
+                        eprintln!("\nMATCHED A RESP LINE!!{:?}\n", line_str);
 
-                    let arr_length = match line_str[1..].trim().parse::<usize>() {
-                        Ok(n) => n,
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-                    let mut elements = Vec::with_capacity(arr_length);
-                    let mut valid = true;
+                        let arr_length = match line_str[1..].trim().parse::<usize>() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                continue;
+                            }
+                        };
+                        let mut elements = Vec::with_capacity(arr_length);
+                        let mut valid = true;
 
-                    for _ in 0..arr_length {
-                        let size_line = match lines.next() {
-                            Some(line) => match String::from_utf8(line.into()) {
-                                Ok(s) => s,
+                        for _ in 0..arr_length {
+                            let size_line = match lines.next() {
+                                Some(line) => match String::from_utf8(line.into()) {
+                                    Ok(s) => s,
+                                    Err(_) => {
+                                        valid = false;
+                                        break;
+                                    }
+                                },
+                                None => {
+                                    valid = false;
+                                    break;
+                                }
+                            };
+                            eprintln!(
+                                "adding length{} for line:{:?}, pos before:{}",
+                                size_line.len() + 1,
+                                size_line,
+                                self.position
+                            );
+                            self.position += line.len() + 1;
+                            eprintln!("after:{}", self.position);
+
+                            if !size_line.starts_with('$') {
+                                eprintln!("FAKE SIZE LINE");
+                                valid = false;
+                                break;
+                            }
+
+                            let size = match size_line[1..].trim().parse::<usize>() {
+                                Ok(n) => n,
                                 Err(_) => {
                                     valid = false;
                                     break;
                                 }
-                            },
-                            None => {
-                                valid = false;
-                                break;
-                            }
-                        };
-                        eprintln!(
-                            "adding length{} for line:{:?}, pos before:{}",
-                            size_line.len() + 1,
-                            size_line,
-                            self.position
-                        );
-                        self.position += line.len() + 1;
-                        eprintln!("after:{}", self.position);
+                            };
 
-                        if !size_line.starts_with('$') {
-                            eprintln!("FAKE SIZE LINE");
-                            valid = false;
-                            break;
-                        }
+                            eprintln!("in resp got size:{size}, from size_line:{:?}", size_line);
+                            let mut content = match lines.next() {
+                                Some(line) => {
+                                    eprintln!(
+                                        "adding length{} for line:{:?}, pos before:{}",
+                                        line.len() + 1,
+                                        String::from_utf8_lossy(&line),
+                                        self.position
+                                    );
+                                    self.position += line.len() + 1;
+                                    eprintln!("after:{}", self.position);
 
-                        let size = match size_line[1..].trim().parse::<usize>() {
-                            Ok(n) => n,
-                            Err(_) => {
-                                valid = false;
-                                break;
-                            }
-                        };
-
-                        eprintln!("in resp got size:{size}, from size_line:{:?}", size_line);
-                        let mut content = match lines.next() {
-                            Some(line) => {
-                                eprintln!(
-                                    "adding length{} for line:{:?}, pos before:{}",
-                                    line.len() + 1,
-                                    String::from_utf8_lossy(&line),
-                                    self.position
-                                );
-                                self.position += line.len() + 1;
-                                eprintln!("after:{}", self.position);
-
-                                match String::from_utf8(line.to_vec()) {
-                                    Ok(s) => s,
-                                    Err(_) => {
-                                        eprintln!("breaking in conversion of line to utf8 insdie resp arr");
-                                        valid = false;
-                                        break;
+                                    match String::from_utf8(line.to_vec()) {
+                                        Ok(s) => s,
+                                        Err(_) => {
+                                            eprintln!("breaking in conversion of line to utf8 insdie resp arr");
+                                            valid = false;
+                                            break;
+                                        }
                                     }
                                 }
-                            }
-                            None => {
+                                None => {
+                                    valid = false;
+                                    break;
+                                }
+                            };
+
+                            content = content.trim().to_string();
+                            eprintln!("GOT content:{:?}", content);
+                            //RESP ARRAY DECODED WRONG
+                            if content.len() != size {
+                                eprintln!("breaking because content is not the same size");
                                 valid = false;
                                 break;
                             }
+
+                            elements.push(content.to_string());
+                        }
+                        if valid && elements.len() == arr_length {
+                            commands.push(elements);
+                        }
+                        eprintln!(
+                            "end of resp section, buf len:{}, pos:{}",
+                            self.buffer.len(),
+                            self.position
+                        );
+                    }
+
+                    Some('$') => {
+                        // AT START OF RDB TRANSFER
+                        eprintln!("ACTUAL RDB SECTION");
+                        let rdb_len = match line_str[1..].trim().parse::<usize>() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                continue;
+                            }
                         };
+                        // Skip RDB data
 
-                        content = content.trim().to_string();
-                        eprintln!("GOT content:{:?}", content);
-                        //RESP ARRAY DECODED WRONG
-                        if content.len() != size {
-                            eprintln!("breaking because content is not the same size");
-                            valid = false;
-                            break;
-                        }
+                        eprintln!("found length {rdb_len}");
+                        let rdb_start = self.position; // + line_str.len() + 2; // +1 for \r
+                        eprintln!("after, pos:{}", self.position);
+                        let rdb_end = rdb_start + rdb_len;
+                        eprintln!(
+                            "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
+                            self.buffer.len()
+                        );
 
-                        elements.push(content.to_string());
+                        let rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
+                        eprintln!(
+                            "PARSED RDB IN STR:{:?}",
+                            String::from_utf8_lossy(&rdb_bytes)
+                        );
+                        //self.decode_rdb(rdb_bytes);
+
+                        // if self.buffer.len() >= rdb_end {
+                        //     self.position = rdb_end; // Move pointer forward
+                        // } else {
+                        //     eprintln!("\n\nBREAK??\n\n");
+                        //     break; // Wait for more data
+                        // }
+                        eprintln!("POSITION AFTER RDB:{}", self.position);
+                        self.position = rdb_end;
+                        break;
                     }
-                    if valid && elements.len() == arr_length {
-                        commands.push(elements);
+                    Some(_) => {
+                        continue;
                     }
+                    _ => continue,
                 }
-
-                Some('$') => {
-                    // AT START OF RDB TRANSFER
-                    eprintln!("ACTUAL RDB SECTION");
-                    let rdb_len = match line_str[1..].trim().parse::<usize>() {
-                        Ok(n) => n,
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-                    // Skip RDB data
-
-                    eprintln!("found length {rdb_len}");
-                    let rdb_start = self.position; // + line_str.len() + 2; // +1 for \r
-                    eprintln!("after, pos:{}", self.position);
-                    let rdb_end = rdb_start + rdb_len;
-                    eprintln!(
-                        "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
-                        self.buffer.len()
-                    );
-
-                    let rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
-                    eprintln!(
-                        "PARSED RDB IN STR:{:?}",
-                        String::from_utf8_lossy(&rdb_bytes)
-                    );
-                    //self.decode_rdb(rdb_bytes);
-
-                    // if self.buffer.len() >= rdb_end {
-                    //     self.position = rdb_end; // Move pointer forward
-                    // } else {
-                    //     eprintln!("\n\nBREAK??\n\n");
-                    //     break; // Wait for more data
-                    // }
-                    eprintln!("POSITION AFTER RDB:{}", self.position);
-                    self.position = rdb_end;
-                    break;
-                }
-                Some(_) => {
-                    continue;
-                }
-                _ => continue,
+            }
+            if (self.buffer.len() as i32) - (self.position as i32) <= 1 {
+                eprintln!(
+                    "breaking with length:{}, curr pos:{}",
+                    self.buffer.len(),
+                    self.position
+                );
+                break;
+            } else {
+                eprintln!(
+                    "LOOPING AGAIN len:{}, pos:{}",
+                    self.buffer.len(),
+                    self.position
+                );
             }
         }
         eprintln!(
