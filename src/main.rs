@@ -615,7 +615,18 @@ fn handle_client(
                         }
 
                         "wait" => {
-                            conn.write_to_stream(":0\r\n".as_bytes());
+                            let num_repls =
+                                broadcast_info.lock().unwrap().connections.iter().count();
+
+                            eprintln!("responding with numrepls:{num_repls}");
+                            conn.write_to_stream(
+                                &[
+                                    ":".as_bytes(),
+                                    num_repls.to_string().as_bytes(),
+                                    "\r\n".as_bytes(),
+                                ]
+                                .concat(),
+                            );
                         }
 
                         _unrecognized_cmd => {
