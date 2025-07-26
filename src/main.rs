@@ -18,7 +18,7 @@ use codecrafters_redis::{
     RedisValue,
 };
 
-//mod client_handler;
+mod entry_stream;
 mod resp_parser;
 mod threadpool;
 mod utils;
@@ -26,6 +26,7 @@ mod utils;
 use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
+use crate::entry_stream::EntryStream;
 use crate::utils::{get_bulk_string, get_port, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
@@ -71,7 +72,7 @@ fn main() {
     let new_db = RedisDatabase::new();
 
     let mut new_db = Arc::new(Mutex::new(new_db));
-    let streams_db: HashMap<String, HashMap<String, (String, String)>> = HashMap::new();
+    let streams_db: HashMap<String, EntryStream> = HashMap::new();
     let streams_db = Arc::new(Mutex::new(streams_db));
 
     let mut b = arg_list.into_iter();
@@ -240,7 +241,7 @@ fn handle_client(
     replica_port: &Option<&str>,
     master_port: &Option<String>,
     new_db: Arc<Mutex<RedisDatabase>>,
-    entry_streams: Arc<Mutex<HashMap<String, HashMap<String, (String, String)>>>>,
+    entry_streams: Arc<Mutex<HashMap<String, EntryStream>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -730,13 +731,14 @@ fn handle_client(
                             let stream_key = all_lines[1].clone();
                             let stream_id = all_lines[2].clone();
                             let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
-                            let _ = entry_streams
-                                .lock()
-                                .unwrap()
-                                .entry(stream_key)
-                                .or_insert(HashMap::new())
-                                .insert(stream_id, (k, v));
-
+                            let mut lk = entry_streams.lock().unwrap();
+                            let r = lk.entry(stream_key);
+                            let x = r.or_insert(EntryStream::default());
+                            if x.is_valid_id(&stream_id) {
+                                x.entries.insert(stream_id, (k, v));
+                                conn.write_to_stream(&get_bulk_string("0-1"));
+                            }
+                            //TODO: invalid stream id
                             conn.write_to_stream(&get_bulk_string("0-1"));
                         }
 
