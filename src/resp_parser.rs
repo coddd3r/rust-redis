@@ -273,10 +273,11 @@ impl RespConnection {
                             String::from_utf8_lossy(&rdb_bytes)
                         );
                         //self.decode_rdb(rdb_bytes);
-                        eprintln!("\n\nafter rdb OFFSET:{}\n\n", self.offset);
+                        eprintln!("\n\nafter rdb OFFSET:{}", self.offset);
 
                         //reset offset after handshake
-                        self.offset = 0;
+                        self.offset = self.buffer.len() - self.position;
+                        eprintln!("after reset OFFSET:{}\n\n", self.offset);
 
                         eprintln!("POSITION AFTER RDB:{}", self.position);
                         self.position = rdb_end;

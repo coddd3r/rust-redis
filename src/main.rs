@@ -530,7 +530,7 @@ fn handle_client(
                             eprintln!("HANDLING REPL CONF");
                             match all_lines[1].as_str() {
                                 GETACK => {
-                                    eprintln!("in get ack");
+                                    eprintln!("in get ack offset before - 37{},", conn.offset);
                                     let curr_offset = conn.offset - 37;
                                     conn.write_to_stream(&conn.format_resp_array(&[
                                         REPL_CONF,
