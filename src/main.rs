@@ -260,8 +260,9 @@ fn handle_client(
         eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
-        let res = conn.try_read_command();
-        eprintln!("Read result: {:?}", res);
+        //ignore the last sent after psync
+        //let res = conn.try_read_command();
+        //eprintln!("Read result: {:?}", res);
     }
 
     loop {
@@ -518,8 +519,10 @@ fn handle_client(
 
                         //REPL
                         "replconf" => {
+                            eprintln!("HANDLING REPL CONF");
                             match all_lines[1].as_str() {
                                 GETACK => {
+                                    eprintln!("in get ack");
                                     conn.write_to_stream(
                                         &conn.format_resp_array(&[REPL_CONF, ACK, "0"]),
                                     );
