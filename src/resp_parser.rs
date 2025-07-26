@@ -325,8 +325,14 @@ impl RespConnection {
             let diff_len = self
                 .format_resp_array(&[crate::REPL_CONF, crate::DIFF])
                 .len();
-            self.offset -= diff_len;
-            self.prev_offset -= diff_len;
+            eprintln!(
+                "before subtraction prev:{}, curr:{}, diff len:{diff_len}",
+                self.prev_offset, self.offset
+            );
+
+            let temp = self.offset + 0 - number_of_bytes_read;
+            self.offset = self.offset - diff_len;
+            self.prev_offset = self.prev_offset - temp;
         }
         Ok(Some(commands))
     }
