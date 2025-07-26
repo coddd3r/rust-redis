@@ -36,6 +36,8 @@ const SLAVE: &str = "slave";
 const MASTER_REPL_OFFSET: &str = "master_repl_offset";
 const MASTER_REPL_ID: &str = "master_replid";
 const REPL_CONF: &str = "REPLCONF";
+const GETACK: &str = "GETACK";
+const ACK: &str = "ACK";
 const LISTENING_PORT: &str = "listening-port";
 const PSYNC: &str = "PSYNC";
 const FULLRESYNC: &str = "FULLRESYNC";
@@ -516,15 +518,24 @@ fn handle_client(
 
                         //REPL
                         "replconf" => {
-                            if all_lines[1] == LISTENING_PORT {
-                                {
-                                    let mut lk = broadcast_info.lock().unwrap();
-                                    lk.ports.push(all_lines[2].clone());
+                            match all_lines[1].as_str() {
+                                GETACK => {
+                                    conn.write_to_stream(
+                                        &conn.format_resp_array(&[REPL_CONF, ACK, "0"]),
+                                    );
                                 }
-                                eprintln!("after adding to broadcasts:{:?}", broadcast_info);
-                                eprintln!("after repl pushing ports:{:?}", broadcast_info);
+                                LISTENING_PORT => {
+                                    {
+                                        let mut lk = broadcast_info.lock().unwrap();
+                                        lk.ports.push(all_lines[2].clone());
+                                    }
+                                    eprintln!("after repl pushing ports:{:?}", broadcast_info);
+                                    conn.write_to_stream(RESP_OK);
+                                }
+                                _ => {
+                                    conn.write_to_stream(RESP_OK);
+                                }
                             }
-                            conn.write_to_stream(RESP_OK);
                             eprintln!("WROTE ok to replconf");
                         }
 

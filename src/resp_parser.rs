@@ -132,14 +132,6 @@ impl RespConnection {
 
             while let Some(line) = lines.next() {
                 if line.is_empty() {
-                    // eprintln!(
-                    //     "adding length:{} for line:{:?}, pos before:{:?}",
-                    //     line.len() + 1,
-                    //     String::from_utf8_lossy(&line),
-                    //     self.position
-                    // );
-                    // self.position += 1;
-                    // eprintln!("after:{}", self.position);
                     eprintln!("empty_line");
                     continue;
                 }
@@ -280,12 +272,6 @@ impl RespConnection {
                         );
                         //self.decode_rdb(rdb_bytes);
 
-                        // if self.buffer.len() >= rdb_end {
-                        //     self.position = rdb_end; // Move pointer forward
-                        // } else {
-                        //     eprintln!("\n\nBREAK??\n\n");
-                        //     break; // Wait for more data
-                        // }
                         eprintln!("POSITION AFTER RDB:{}", self.position);
                         self.position = rdb_end;
                         break;
