@@ -71,7 +71,7 @@ fn main() {
     let new_db = RedisDatabase::new();
 
     let mut new_db = Arc::new(Mutex::new(new_db));
-    let streams_db: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let streams_db: HashMap<String, HashMap<String, (String, String)>> = HashMap::new();
     let streams_db = Arc::new(Mutex::new(streams_db));
 
     let mut b = arg_list.into_iter();
@@ -240,7 +240,7 @@ fn handle_client(
     replica_port: &Option<&str>,
     master_port: &Option<String>,
     new_db: Arc<Mutex<RedisDatabase>>,
-    entry_streams: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    entry_streams: Arc<Mutex<HashMap<String, HashMap<String, (String, String)>>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -705,6 +705,10 @@ fn handle_client(
 
                         "type" => {
                             let key = &all_lines[1];
+                            eprintln!(
+                                "key:{key}, currentdb:{:?}, current entry_strem{:?}",
+                                new_db, entry_streams
+                            );
 
                             {
                                 if new_db.lock().unwrap().get(key).is_some() {
@@ -723,14 +727,15 @@ fn handle_client(
                         }
 
                         "xadd" => {
-                            let key = all_lines[2].clone();
+                            let stream_key = all_lines[1].clone();
+                            let stream_id = all_lines[2].clone();
                             let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
                             let _ = entry_streams
                                 .lock()
                                 .unwrap()
-                                .entry(key)
+                                .entry(stream_key)
                                 .or_insert(HashMap::new())
-                                .insert(k, v);
+                                .insert(stream_id, (k, v));
 
                             conn.write_to_stream(&get_bulk_string("0-1"));
                         }
