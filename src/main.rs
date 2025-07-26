@@ -63,7 +63,7 @@ fn main() {
     let mut port_found = false;
     let mut short_port = String::new();
 
-    let stream_pool = ThreadPool::new(15);
+    let stream_pool = ThreadPool::new(25);
     let mut master_port: Option<String> = None;
     //let mut master_conn: Option<TcpStream> = None;
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(BroadCastInfo::new()));
@@ -693,7 +693,7 @@ fn handle_client(
 
                                 eprintln!("after threads");
                             } else {
-                                conn.write_to_stream(":0\r\n".as_bytes());
+                                conn.write_to_stream(format!(":{}\r\n", num_repls).as_bytes());
                             }
                         }
 
