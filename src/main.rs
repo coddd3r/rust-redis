@@ -566,26 +566,6 @@ fn handle_client(
                                         eprintln!("ADD TO ACK");
                                         lk.num_acks += 1;
                                     }
-
-                                    if lk.num_waiting_for > 0
-                                        && (SystemTime::now() > lk.waiting_until
-                                            || lk.num_acks == lk.num_waiting_for)
-                                    {
-                                        eprintln!("\n\nRESPONDING WITH {} ACKS\n\n", lk.num_acks);
-                                        conn.write_to_stream(
-                                            &[
-                                                ":".as_bytes(),
-                                                //final_count.to_string().as_bytes(),
-                                                lk.num_acks.to_string().as_bytes(),
-                                                "\r\n".as_bytes(),
-                                            ]
-                                            .concat(),
-                                        );
-
-                                        lk.num_acks = 0;
-                                        lk.num_waiting_for = 0;
-                                        //:w waiting_until = SystemTime::now();
-                                    }
                                 }
 
                                 _ => {
@@ -676,14 +656,42 @@ fn handle_client(
                                 num_repls, wait_for_ms
                             );
 
+                            let mut acq_threads = Vec::new();
                             if !write_command.is_empty() {
                                 for replica in &mut all_repls {
                                     let mut repl_stream = replica.0.try_clone().unwrap();
                                     let arq = ack_req.clone();
-                                    thread::spawn(move || {
+                                    let res = thread::spawn(move || {
                                         repl_stream.write_all(&arq).unwrap();
                                     });
+                                    acq_threads.push(res);
                                 }
+                                acq_threads.into_iter().for_each(|e| {
+                                    let _ = e.join();
+                                });
+
+                                sleep(Duration::from(wait_for_ms));
+                                let mut lk = broadcast_info.lock().unwrap();
+                                if lk.num_waiting_for > 0
+                                    && (SystemTime::now() > lk.waiting_until
+                                        || lk.num_acks == lk.num_waiting_for)
+                                {
+                                    eprintln!("\n\nRESPONDING WITH {} ACKS\n\n", lk.num_acks);
+                                    conn.write_to_stream(
+                                        &[
+                                            ":".as_bytes(),
+                                            lk.num_acks.to_string().as_bytes(),
+                                            "\r\n".as_bytes(),
+                                        ]
+                                        .concat(),
+                                    );
+
+                                    lk.num_acks = 0;
+                                    lk.num_waiting_for = 0;
+                                }
+                                std::mem::drop(lk);
+
+                                eprintln!("after threads");
                             } else {
                                 conn.write_to_stream(":0\r\n".as_bytes());
                             }
@@ -702,9 +710,7 @@ fn handle_client(
                     }
                 }
             }
-            Ok(None) => {
-                //std::thread::sleep(Duration::from_millis(50));
-            }
+            Ok(None) => {}
             Err(e) => {
                 eprintln!("Connection error: {}", e);
                 break;
