@@ -20,6 +20,9 @@ pub struct BroadCastInfo {
     pub connections: Vec<RespConnection>,
     next_id: usize,
     pub ports: Vec<String>,
+    pub num_waiting_for: usize,
+    pub waiting_until: SystemTime,
+    pub num_acks: usize,
 }
 
 impl BroadCastInfo {
@@ -28,6 +31,9 @@ impl BroadCastInfo {
             connections: Vec::new(),
             next_id: 0,
             ports: Vec::new(),
+            num_waiting_for: 0,
+            num_acks: 0,
+            waiting_until: SystemTime::now(),
         }
     }
 
@@ -79,6 +85,7 @@ impl RespConnection {
     pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         // Read available data
 
+        //eprintln!("stream in read");
         //let mut stream = self.stream.lock().unwrap();
         let mut temp_buf = [0; 4096];
         let buf_size_before = self.buffer.len();
@@ -368,23 +375,23 @@ impl RespConnection {
         sleep(Duration::from_millis(5));
     }
 
-    pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
-        eprintln!("DECODING RDB BYTES RECEIVED");
-        eprintln!(
-            "read from stream num rdb file:{:?}, length:{:?}",
-            received_rdb,
-            received_rdb.len()
-        );
-        crate::print_hex_dump(&received_rdb);
+    // pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
+    //     eprintln!("DECODING RDB BYTES RECEIVED");
+    //     eprintln!(
+    //         "read from stream num rdb file:{:?}, length:{:?}",
+    //         received_rdb,
+    //         received_rdb.len()
+    //     );
+    //     crate::print_hex_dump(&received_rdb);
 
-        let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
+    //     let received_rdb_path = std::env::current_dir().unwrap().join("dumpreceived.rdb");
 
-        let mut file = File::create(&received_rdb_path).unwrap();
-        file.write_all(&received_rdb)
-            .expect("failed to write receive rdb to file");
-        //eprintln!("WRPTE RESPONSE TO FILE");
-        let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
-            .expect("failed tp read response rdb from file");
-        eprintln!("RECEIVED RDB:{:?}", final_rdb);
-    }
+    //     let mut file = File::create(&received_rdb_path).unwrap();
+    //     file.write_all(&received_rdb)
+    //         .expect("failed to write receive rdb to file");
+    //     //eprintln!("WRPTE RESPONSE TO FILE");
+    //     let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
+    //         .expect("failed tp read response rdb from file");
+    //     eprintln!("RECEIVED RDB:{:?}", final_rdb);
+    // }
 }
