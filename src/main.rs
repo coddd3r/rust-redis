@@ -600,9 +600,6 @@ fn handle_client(
                                         .concat(),
                                     );
 
-                                    // stream
-                                    //     .write_all(&response_rdb_bytes)
-                                    //     .expect("failed to write rdb bytes in response to hadnshake");
                                     s.write_to_stream(&response_rdb_bytes)
                                 }
                             };
@@ -615,6 +612,10 @@ fn handle_client(
                         "command" => {
                             eprintln!("INITIATION, no command");
                             return Ok(());
+                        }
+
+                        "wait" => {
+                            conn.write_to_stream(":0\r\n".as_bytes());
                         }
 
                         _unrecognized_cmd => {
