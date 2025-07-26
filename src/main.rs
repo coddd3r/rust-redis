@@ -240,8 +240,13 @@ fn handle_client(
         master_port,
         get_port(&stream)
     );
+
     let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    eprintln!("IN CLIENT, master_port:{:?}", master_port);
+    eprintln!(
+        "IS MASTER?{:?}, master_port:{:?}",
+        master_port.is_some(),
+        master_port
+    );
 
     //let mut conn = RespConnection::new(Arc::clone(&stream));
     let mut conn = RespConnection::new(stream.try_clone().unwrap());
@@ -277,10 +282,8 @@ fn handle_client(
                 eprintln!("ALL COMMANDS:{:?}", commands);
                 eprintln!("current broadcast info:{:?}", broadcast_info);
                 for all_lines in commands {
-                    //std::thread::sleep(Duration::from_millis(50));
                     if all_lines.len() < 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
-                        //conn.write_to_stream(RESP_NULL);
                         continue;
                     }
                     eprintln!("ALL LINES:{:?}", all_lines);
@@ -292,6 +295,10 @@ fn handle_client(
                             if !sent_by_main {
                                 conn.write_to_stream(b"+PONG\r\n");
                             }
+                            eprintln!(
+                                "\nIGNORING ping set by main, is replica?{}",
+                                master_port.is_some()
+                            );
                         }
                         "echo" => {
                             let resp = [b"+", all_lines[1].as_bytes(), b"\r\n"].concat();
@@ -425,8 +432,8 @@ fn handle_client(
                             let mut buffer = Vec::new();
                             file.read_to_end(&mut buffer)?;
 
-                            eprintln!("Printin rdb as HEX");
-                            print_hex::print_hex_dump(&buffer);
+                            // eprintln!("Printin rdb as HEX");
+                            // print_hex::print_hex_dump(&buffer);
                             match read_rdb_file(path) {
                                 Ok(rdb) => {
                                     let ret_keys = utils::read_rdb_keys(rdb, all_lines[1].clone());
@@ -480,7 +487,7 @@ fn handle_client(
                                 eprintln!("Creating DUMMY in curr dir");
                                 path = env::current_dir().unwrap();
                                 path.push("dump.rdb");
-                                print_hex::create_dummy_rdb(&path)?;
+                                //print_hex::create_dummy_rdb(&path)?;
                                 conn.write_to_stream(RESP_OK);
                                 // no need for data as it already mocked
                             }
@@ -589,7 +596,7 @@ fn handle_client(
                                     eprintln!("IN MASTER SENDING RDB");
                                     //stream
                                     eprintln!("writing rdb len {}", response_rdb_bytes.len());
-                                    print_hex_dump(&response_rdb_bytes);
+                                    //print_hex_dump(&response_rdb_bytes);
 
                                     s.write_to_stream(
                                         &[
