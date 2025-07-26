@@ -283,7 +283,9 @@ fn handle_client(
                     eprintln!("handling command:{cmd}");
                     match cmd.as_str() {
                         "ping" => {
-                            conn.write_to_stream(b"+PONG\r\n");
+                            if !sent_by_main {
+                                conn.write_to_stream(b"+PONG\r\n");
+                            }
                         }
                         "echo" => {
                             let resp = [b"+", all_lines[1].as_bytes(), b"\r\n"].concat();
@@ -523,9 +525,12 @@ fn handle_client(
                             match all_lines[1].as_str() {
                                 GETACK => {
                                     eprintln!("in get ack");
-                                    conn.write_to_stream(
-                                        &conn.format_resp_array(&[REPL_CONF, ACK, "0"]),
-                                    );
+                                    let curr_offset = conn.offset - 37;
+                                    conn.write_to_stream(&conn.format_resp_array(&[
+                                        REPL_CONF,
+                                        ACK,
+                                        curr_offset.to_string().as_str(),
+                                    ]));
                                 }
                                 LISTENING_PORT => {
                                     {
@@ -557,8 +562,10 @@ fn handle_client(
 
                             {
                                 let mut lk = broadcast_info.lock().unwrap();
-                                lk.connections
-                                    .push(RespConnection::new(stream.try_clone().unwrap()));
+                                let mut master_stream =
+                                    RespConnection::new(stream.try_clone().unwrap());
+                                master_stream.is_master = true;
+                                lk.connections.push(master_stream);
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
                                 //stream.write_all(&resync_response)?;

@@ -34,12 +34,7 @@ impl BroadCastInfo {
     //pub fn add_connection(&mut self, stream: Arc<Mutex<TcpStream>>) -> usize {
     pub fn add_connection(&mut self, stream: TcpStream) -> usize {
         let id = self.next_id;
-        self.connections.push(RespConnection {
-            //stream: Arc::new(Mutex::new(stream)),
-            stream,
-            buffer: Vec::new(),
-            position: 0,
-        });
+        self.connections.push(RespConnection::new(stream));
         self.next_id += 1;
         id
     }
@@ -57,6 +52,8 @@ pub struct RespConnection {
     pub stream: TcpStream,
     pub buffer: Vec<u8>,
     pub position: usize,
+    pub offset: usize,
+    pub is_master: bool,
 }
 
 impl RespConnection {
@@ -72,6 +69,8 @@ impl RespConnection {
             stream: stream,
             buffer: Vec::new(),
             position: 0,
+            offset: 0,
+            is_master: false,
         }
     }
 
@@ -91,6 +90,9 @@ impl RespConnection {
                     "Found {n} bytes, {:?}",
                     String::from_utf8(temp_buf[..n].into())
                 );
+                if self.is_master {
+                    self.offset += n
+                }
                 self.buffer.extend_from_slice(&temp_buf[..n]);
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
