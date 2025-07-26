@@ -152,15 +152,12 @@ pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
 //    use_buf
 //}
 
-//pub fn write_resp_arr(cmd: Vec<&str>) -> Vec<u8> {
-//    let mut full_bytes = Vec::new();
-//    full_bytes.extend_from_slice(b"*");
-//    full_bytes.extend_from_slice(cmd.len().to_string().as_bytes());
-//    full_bytes.extend_from_slice(b"\r\n");
-//
-//    cmd.iter()
-//        .for_each(|e| full_bytes.extend(get_bulk_string(e)));
-//    full_bytes
+//pub fn write_resp_arr(elements: &[&str]) -> Vec<u8> {
+//    let mut resp = format!("*{}\r\n", elements.len()).into_bytes();
+//    for element in elements {
+//        resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+//    }
+//    resp
 //}
 pub fn get_port(stream: &TcpStream) -> Option<String> {
     if let Ok(peer_addr) = stream.peer_addr() {

@@ -53,6 +53,7 @@ pub struct RespConnection {
     pub buffer: Vec<u8>,
     pub position: usize,
     pub offset: usize,
+    pub prev_offset: usize,
     pub is_master: bool,
 }
 
@@ -70,6 +71,7 @@ impl RespConnection {
             buffer: Vec::new(),
             position: 0,
             offset: 0,
+            prev_offset: 0,
             is_master: false,
         }
     }
@@ -79,6 +81,7 @@ impl RespConnection {
 
         //let mut stream = self.stream.lock().unwrap();
         let mut temp_buf = [0; 4096];
+        let buf_size_before = self.buffer.len();
 
         match self.stream.read(&mut temp_buf) {
             Ok(0) => {
@@ -90,9 +93,10 @@ impl RespConnection {
                     "Found {n} bytes, {:?}",
                     String::from_utf8(temp_buf[..n].into())
                 );
-                if self.is_master {
-                    self.offset += n
-                }
+                //if !self.is_master {
+                self.prev_offset = self.offset + 0;
+                self.offset += n;
+                //}
                 self.buffer.extend_from_slice(&temp_buf[..n]);
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
@@ -107,12 +111,15 @@ impl RespConnection {
         eprintln!("AFTER stream in read");
 
         // Parse complete commands from buffer
-        self.parse_buffer()
+        self.parse_buffer(self.buffer.len() - buf_size_before)
     }
 
-    fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
+    fn parse_buffer(
+        &mut self,
+        number_of_bytes_read: usize,
+    ) -> std::io::Result<Option<Vec<Vec<String>>>> {
         eprintln!(
-            "\n\n START: handling buffer starting at pos:{}\n\n",
+            "\n\n START: handling buffer starting at pos:{}, num bytes read:{number_of_bytes_read}\n\n",
             self.position
         );
         eprintln!(
@@ -290,6 +297,7 @@ impl RespConnection {
                     _ => continue,
                 }
             }
+
             if (self.buffer.len() as i32) - (self.position as i32) <= 1 {
                 eprintln!(
                     "breaking with length:{}, curr pos:{}",
@@ -311,6 +319,15 @@ impl RespConnection {
             self.position,
             self.buffer.len()
         );
+
+        if commands.iter().any(|e| e.iter().any(|f| f == crate::DIFF)) {
+            eprintln!("\n\nIGNORING DIFF COMMAND IN OFFSET\n\n");
+            let diff_len = self
+                .format_resp_array(&[crate::REPL_CONF, crate::DIFF])
+                .len();
+            self.offset -= diff_len;
+            self.prev_offset -= diff_len;
+        }
         Ok(Some(commands))
     }
 

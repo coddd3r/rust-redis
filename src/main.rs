@@ -7,7 +7,7 @@ use std::io::{prelude::*, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
+use std::thread::{self, sleep};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, usize};
@@ -38,6 +38,7 @@ const MASTER_REPL_OFFSET: &str = "master_repl_offset";
 const MASTER_REPL_ID: &str = "master_replid";
 const REPL_CONF: &str = "REPLCONF";
 const GETACK: &str = "GETACK";
+const DIFF: &str = "DIFF";
 const ACK: &str = "ACK";
 const LISTENING_PORT: &str = "listening-port";
 const PSYNC: &str = "PSYNC";
@@ -272,9 +273,9 @@ fn handle_client(
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]));
         //ignore the last sent after psync
-        //let res = conn.try_read_command();
-        //eprintln!("Read result: {:?}", res);
     }
+
+    let mut write_command: Vec<_> = Vec::new();
 
     loop {
         match conn.try_read_command() {
@@ -337,6 +338,7 @@ fn handle_client(
                                 eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 conn.write_to_stream(RESP_OK);
                             }
+                            write_command = all_lines;
                         }
 
                         /*
@@ -495,7 +497,7 @@ fn handle_client(
 
                         //INFO
                         "info" => {
-                            //if there is an extra key arg
+                            //if there is an extra key arg/"se"
                             eprintln!("IN INFO SECTION");
                             if all_lines.len() > 2 {
                                 let info_key = &all_lines[1];
@@ -545,6 +547,16 @@ fn handle_client(
                                         curr_offset.to_string().as_str(),
                                     ]));
                                 }
+
+                                DIFF => {
+                                    //let diff_command = conn.format_resp_array(&[REPL_CONF, DIFF]);
+                                    eprintln!("client got diff line");
+                                    let fidd = conn.offset - conn.prev_offset; //- diff_command.len();
+                                    conn.write_to_stream(
+                                        &[b":", fidd.to_string().as_bytes(), b"\r\n"].concat(),
+                                    );
+                                }
+
                                 LISTENING_PORT => {
                                     {
                                         let mut lk = broadcast_info.lock().unwrap();
@@ -575,10 +587,10 @@ fn handle_client(
 
                             {
                                 let mut lk = broadcast_info.lock().unwrap();
-                                let master_stream =
+                                let replica_stream =
                                     RespConnection::new(stream.try_clone().unwrap());
                                 //master_stream.is_master = true;
-                                lk.connections.push(master_stream);
+                                lk.connections.push(replica_stream);
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
                                 //stream.write_all(&resync_response)?;
@@ -616,24 +628,97 @@ fn handle_client(
                             );
                         }
 
+                        "wait" => {
+                            let mut lk = broadcast_info.lock().unwrap();
+                            let num_required = all_lines[1].parse::<usize>().unwrap();
+
+                            let wait_for_ms =
+                                Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
+                            let num_repls = lk.connections.len();
+                            eprintln!("responding with numrepls:{num_repls}");
+
+                            //let ack_req = &[crate::REPL_CONF, crate::GETACK, "*"];
+                            //let wait_pool = ThreadPool::new(lk.connections.len());
+
+                            fn get_int_from_resp(s: &str) -> usize {
+                                //let s = String::from_utf8(tm.into()).unwrap();
+                                s.chars().nth(1).unwrap() as usize
+                            }
+                            //let count_ack = Arc::new(Mutex::new(0));
+                            let mut ack_threads = Vec::new();
+                            /*
+                             * For each replica spawn a thread and keep the join handle,
+                             * thread returns 0 if timeout, 1 if successful ack
+                             * use own custom ack request that is ignored by the offset
+                             * store the set command received, and each conn keps a prev offset
+                             * compare diff in offset if the same as the size, will mean an
+                             * acknowledgement of the command.
+                             * */
+                            for replica in &mut lk.connections {
+                                //let c = Arc::clone(&count_ack);
+                                let start_time = SystemTime::now();
+                                let end_time = start_time + wait_for_ms;
+                                let mut repl_stream = replica.stream.try_clone().unwrap();
+                                //let req = conn.format_resp_array(ack_req);
+                                let diff_req =
+                                    conn.format_resp_array(&[crate::REPL_CONF, crate::DIFF]);
+                                let command_len = conn
+                                    .format_resp_array(
+                                        write_command
+                                            .iter()
+                                            .map(|e| e.as_str())
+                                            .collect::<Vec<&str>>()
+                                            .iter()
+                                            .as_slice(),
+                                    )
+                                    .len();
+
+                                //wait_pool.execute(move || loop {
+                                let res = thread::spawn(move || loop {
+                                    thread::sleep(wait_for_ms / 10);
+                                    repl_stream.write_all(&diff_req).unwrap();
+                                    let mut reader =
+                                        BufReader::new(repl_stream.try_clone().unwrap());
+                                    let mut buf = String::new();
+                                    let _ = reader.read_line(&mut buf).unwrap();
+                                    let res = get_int_from_resp(&buf);
+                                    if res == command_len {
+                                        //*c.lock().unwrap() += 1;
+                                        return 1;
+                                    }
+
+                                    if SystemTime::now() > end_time {
+                                        return 0;
+                                    }
+                                });
+                                ack_threads.push(res);
+                            }
+
+                            let mut final_count = 0;
+                            for handle in ack_threads {
+                                let res = handle.join().expect("failed joining ack threads");
+                                final_count += res;
+                                if final_count == num_required {
+                                    break;
+                                }
+                            }
+
+                            {
+                                conn.write_to_stream(
+                                    &[
+                                        ":".as_bytes(),
+                                        //&*(count_ack.lock().unwrap()).to_string().as_bytes(),
+                                        final_count.to_string().as_bytes(),
+                                        "\r\n".as_bytes(),
+                                    ]
+                                    .concat(),
+                                );
+                            }
+                        }
+
                         "command" => {
                             eprintln!("INITIATION, no command");
                             return Ok(());
-                        }
-
-                        "wait" => {
-                            let num_repls =
-                                broadcast_info.lock().unwrap().connections.iter().count();
-
-                            eprintln!("responding with numrepls:{num_repls}");
-                            conn.write_to_stream(
-                                &[
-                                    ":".as_bytes(),
-                                    num_repls.to_string().as_bytes(),
-                                    "\r\n".as_bytes(),
-                                ]
-                                .concat(),
-                            );
                         }
 
                         _unrecognized_cmd => {
