@@ -26,6 +26,19 @@ impl RedisEntry {
             next_sequence_id: None,
         }
     }
+
+    pub fn entry_resp_array(&self) -> Vec<u8> {
+        let mut use_vec: Vec<&str> = Vec::new();
+        self.values.iter().for_each(|e| {
+            use_vec.extend([&e.0.as_str(), &e.1.as_str()]);
+        });
+
+        let mut resp = format!("*{}\r\n", use_vec.len() * 2).into_bytes();
+        for element in use_vec {
+            resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+        }
+        resp
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -103,7 +116,7 @@ impl RedisEntryStream {
         return (false, SMALLER_ERROR.into());
     }
 
-    pub fn get_from_range(&self, start: &str, end: &str) {
+    pub fn get_from_range(&self, start: &str, end: &str) -> Vec<u8> {
         eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         //let start_time = start.parse::<usize>().unwrap();
@@ -119,7 +132,6 @@ impl RedisEntryStream {
         match self.entries.get(&start_time) {
             Some(ent) => {
                 eprintln!("got a start entry:{:?}", ent);
-                let mut curr = ent;
                 let mut curr_id = Some(&start_time);
                 loop {
                     eprintln!("in range-loop");
@@ -131,8 +143,8 @@ impl RedisEntryStream {
                                 break;
                             }
 
-                            curr = self.entries.get(curr_id.unwrap()).unwrap();
-                            check_keys.push((use_id.clone(), curr.values.clone()));
+                            let curr = self.entries.get(curr_id.unwrap()).unwrap();
+                            check_keys.push((use_id.clone(), curr.clone()));
                             curr_id = curr.next_sequence_id.as_ref();
                         }
                         None => {
@@ -142,9 +154,25 @@ impl RedisEntryStream {
                     }
                 }
             }
-            None => {
-                panic!("NO ENTRY?")
-            }
+            None => return self.get_stream_resp_array(&check_keys),
         }
+
+        eprintln!("Got check keys:{:?}", check_keys);
+        let resp_arrays = self.get_stream_resp_array(&check_keys);
+        eprintln!(
+            "resp arrays as resp:{:?}",
+            String::from_utf8_lossy(&resp_arrays)
+        );
+        resp_arrays
+    }
+
+    pub fn get_stream_resp_array(&self, v: &Vec<(String, RedisEntry)>) -> Vec<u8> {
+        let mut resp = format!("*{}\r\n", v.len()).into_bytes();
+        v.iter().for_each(|(entry_id, ent)| {
+            resp.extend(b"*2\r\n");
+            resp.extend(get_bulk_string(&entry_id));
+            resp.extend(ent.entry_resp_array());
+        });
+        resp
     }
 }

@@ -785,7 +785,8 @@ fn handle_client(
                                 let curr_stream =
                                     lk.entry(stream_name).or_insert(RedisEntryStream::new());
 
-                                curr_stream.get_from_range(&start, &end);
+                                let res = curr_stream.get_from_range(&start, &end);
+                                conn.write_to_stream(&res);
                             }
                         }
 
