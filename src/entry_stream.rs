@@ -47,6 +47,7 @@ pub struct RedisEntryStream {
     pub last_id: (usize, usize),
     pub sequences: HashMap<usize, usize>,
     pub last_sequence_id: Option<String>,
+    pub first_sequence_id: Option<String>,
 }
 
 impl RedisEntryStream {
@@ -120,8 +121,10 @@ impl RedisEntryStream {
         eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         //let start_time = start.parse::<usize>().unwrap();
-        let start_time = {
-            if start.contains('-') {
+        let start_time = &{
+            if start == "-" {
+                self.first_sequence_id.clone().unwrap()
+            } else if start.contains('-') {
                 start.to_string()
             } else {
                 format!("{start}-{}", 0)
@@ -129,10 +132,10 @@ impl RedisEntryStream {
         };
 
         eprintln!("using start:{start_time}");
-        match self.entries.get(&start_time) {
+        match self.entries.get(start_time) {
             Some(ent) => {
                 eprintln!("got a start entry:{:?}", ent);
-                let mut curr_id = Some(&start_time);
+                let mut curr_id = Some(start_time);
                 loop {
                     eprintln!("in range-loop");
                     match curr_id {

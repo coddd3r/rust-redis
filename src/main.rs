@@ -752,6 +752,7 @@ fn handle_client(
                                     }
                                     None => {
                                         eprintln!("ADDING NEW SEQ ID");
+                                        curr_stream.first_sequence_id = Some(stream_id.clone());
                                         curr_stream.last_sequence_id = Some(stream_id.clone());
                                     }
                                 }
