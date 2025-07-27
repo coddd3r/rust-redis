@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::utils::get_bulk_string;
 
@@ -6,6 +9,7 @@ use crate::utils::get_bulk_string;
 pub struct EntryStream {
     pub entries: HashMap<String, (String, String)>,
     pub last_id: (usize, usize),
+    //pub sequences: HashMap<String, usize>,
     pub sequences: HashMap<usize, usize>,
 }
 
@@ -25,12 +29,29 @@ impl EntryStream {
     //}
 
     pub fn get_next_sequence(&mut self, seq: usize) -> usize {
+        //let seq = seq.to_string();
+        eprintln!("in get sequence, SEQUENCES:{:?}", self.sequences);
         let ret = self.sequences.entry(seq).or_insert(0).clone();
         *(self.sequences.get_mut(&seq).unwrap()) += 1;
+        eprintln!("in get sequence, returning:{ret}");
         ret
     }
+
     pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
         let mut parts: Vec<_> = Vec::new();
+        eprintln!("max usize:{}", usize::MAX);
+
+        if id == "*" {
+            let start = SystemTime::now();
+            let since_the_epoch = start
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as usize;
+            let use_id = format!("{since_the_epoch}-0");
+            self.sequences.insert(since_the_epoch, 1);
+            eprintln!("after inser:{:?}", self.sequences);
+            return (true, get_bulk_string(&use_id));
+        }
 
         for part in id.split("-") {
             match part.parse::<usize>() {
