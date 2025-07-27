@@ -16,24 +16,24 @@ const SMALLER_ERROR: &[u8] =
 #[derive(Debug, Default, Clone)]
 pub struct RedisEntry {
     pub values: (String, String),
-    pub next_sequence_id: String,
+    pub next_sequence_id: Option<String>,
 }
 
 impl RedisEntry {
     pub fn new(v: (String, String)) -> Self {
         Self {
             values: v,
-            next_sequence_id: String::new(),
+            next_sequence_id: None,
         }
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct RedisEntryStream {
-    pub entries: HashMap<String, RedisEntry>,
+    pub entries: HashMap<String, Vec<RedisEntry>>,
     pub last_id: (usize, usize),
     pub sequences: HashMap<usize, usize>,
-    pub last_sequence_id: String,
+    pub last_sequence_id: Option<String>,
 }
 
 impl RedisEntryStream {
@@ -59,6 +59,7 @@ impl RedisEntryStream {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as usize;
+            self.last_id = (since_the_epoch, 0);
             let use_id = format!("{since_the_epoch}-0");
             self.sequences.insert(since_the_epoch, 1);
             eprintln!("after inser:{:?}", self.sequences);
@@ -93,6 +94,7 @@ impl RedisEntryStream {
             return (false, ZERO_ERROR.into());
         }
         if parts[0] > self.last_id.0 || (parts[0] == self.last_id.0 && parts[1] > self.last_id.1) {
+            eprintln!("parts[0] GREATER?");
             self.last_id = (parts[0], parts[1]);
             let use_id = format!("{}-{}", parts[0], parts[1]);
             eprintln!("returning id:{use_id}");
@@ -102,28 +104,43 @@ impl RedisEntryStream {
     }
 
     pub fn get_from_range(&self, start: &str, end: &str) {
+        eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         //let start_time = start.parse::<usize>().unwrap();
         let start_time = format!("{start}-{}", 0);
+        eprintln!("using start:{start_time}");
         match self.entries.get(&start_time) {
             Some(ent) => {
+                eprintln!("got a start entry:{:?}", ent);
                 let mut curr = ent;
-                let mut curr_id = &start_time;
+                let mut curr_id = Some(&start_time);
                 loop {
-                    check_keys.push((
-                        curr_id.as_str(),
-                        (curr.values.0.as_str(), curr.values.1.as_str()),
-                    ));
-                    curr_id = &curr.next_sequence_id;
-                    curr = self.entries.get(curr_id).unwrap();
-                    if curr.next_sequence_id.is_empty()
-                        || curr.next_sequence_id.split("-").nth(0).unwrap() > end
-                    {
-                        break;
+                    eprintln!("in range-loop");
+                    match curr_id {
+                        Some(use_id) => {
+                            eprintln!("found next wntry using id:{use_id}");
+                            if use_id.split("-").nth(0).unwrap() > end {
+                                eprintln!("GOT TO END of range breaking with:{:?}", check_keys);
+                                break;
+                            }
+
+                            curr = self.entries.get(curr_id.unwrap()).unwrap();
+                            check_keys.push((
+                                use_id.clone(),
+                                (curr.values.0.as_str(), curr.values.1.as_str()),
+                            ));
+                            curr_id = curr.next_sequence_id.as_ref();
+                        }
+                        None => {
+                            eprintln!("next id is none, breaking with:{:?}", check_keys);
+                            break;
+                        }
                     }
                 }
             }
-            None => {}
+            None => {
+                panic!("NO ENTRY?")
+            }
         }
     }
 }

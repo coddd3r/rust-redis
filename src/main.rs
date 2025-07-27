@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::arch::x86_64::_mm256_sra_epi16;
 use std::char::decode_utf16;
 use std::collections::HashMap;
 use std::error::Error;
@@ -740,14 +741,20 @@ fn handle_client(
                             eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
                             if res.0 {
                                 let prev_sequence_id = &curr_stream.last_sequence_id;
-                                let prev_entry =
-                                    curr_stream.entries.get_mut(prev_sequence_id).unwrap();
-
-                                let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
-                                prev_entry.next_sequence_id = use_entry_id.clone();
+                                //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
+                                match prev_sequence_id {
+                                    Some(p_id) => {
+                                        let prev_entry = curr_stream.entries.get_mut(p_id).unwrap();
+                                        prev_entry.next_sequence_id = Some(stream_id.clone());
+                                    }
+                                    None => {
+                                        curr_stream.last_sequence_id = Some(stream_id.clone());
+                                    }
+                                }
                                 let use_entry = RedisEntry::new((k, v));
-                                curr_stream.entries.insert(use_entry_id, use_entry);
+                                curr_stream.entries.insert(stream_id, use_entry);
                             }
+                            eprintln!("succesful insert curr st_db:{:?}", entry_streams);
                             conn.write_to_stream(&res.1);
                         }
 
@@ -755,8 +762,10 @@ fn handle_client(
                             let stream_name = all_lines[1].clone();
                             let start = all_lines[2].clone();
                             let end = all_lines[3].clone();
-                            let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
-                            eprintln!("handling XRANGE with key:{stream_name}, start:{start}, end:{end}, k:{k}, v:{v}");
+                            //let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
+                            eprintln!(
+                                "handling XRANGE with key:{stream_name}, start:{start}, end:{end}"
+                            );
                             {
                                 let mut lk = entry_streams.lock().unwrap();
                                 let curr_stream =
