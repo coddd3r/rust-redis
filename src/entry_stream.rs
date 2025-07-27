@@ -176,11 +176,17 @@ impl RedisEntryStream {
         resp_arrays
     }
 
-    pub fn xread_range(&self, start: &str) -> Vec<u8> {
+    pub fn xread_range(&self, stream_name: &str, start: &str) -> Vec<u8> {
         eprintln!("IN XREAD FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
+
         let start_t = {
-            if start == "-" {
+            if self.first_sequence_id.is_none() {
+                eprintln!("empty stream");
+                None
+            } else if start < self.first_sequence_id.clone().unwrap().as_str() {
+                self.first_sequence_id.clone()
+            } else if start == "-" {
                 Some(self.first_sequence_id.clone().unwrap())
             } else if start.contains('-') {
                 let excl_id = start.to_string();
@@ -226,15 +232,42 @@ impl RedisEntryStream {
         }
 
         eprintln!("Got check keys:{:?}", check_keys);
-        let resp_arrays = self.get_stream_resp_array(&check_keys);
+        let resp_arrays = self.get_xread_resp_array(stream_name, &check_keys);
         eprintln!(
             "resp arrays as resp:{:?}",
             String::from_utf8_lossy(&resp_arrays)
         );
         resp_arrays
     }
+
     pub fn get_stream_resp_array(&self, v: &Vec<(String, RedisEntry)>) -> Vec<u8> {
+        if v.is_empty() {
+            eprintln!("getting resp arr for empty");
+            return crate::RESP_NULL.into();
+        }
         let mut resp = format!("*{}\r\n", v.len()).into_bytes();
+        v.iter().for_each(|(entry_id, ent)| {
+            resp.extend(b"*2\r\n");
+            resp.extend(get_bulk_string(&entry_id));
+            resp.extend(ent.entry_resp_array());
+        });
+        resp
+    }
+
+    pub fn get_xread_resp_array(
+        &self,
+        stream_name: &str,
+        v: &Vec<(String, RedisEntry)>,
+    ) -> Vec<u8> {
+        if v.is_empty() {
+            eprintln!("getting resp arr for empty");
+            return crate::RESP_NULL.into();
+        }
+
+        let mut resp = b"*1\r\n".to_vec();
+        resp.extend(b"*2\r\n");
+        resp.extend(&get_bulk_string(stream_name));
+        resp.extend(b"*1\r\n");
         v.iter().for_each(|(entry_id, ent)| {
             resp.extend(b"*2\r\n");
             resp.extend(get_bulk_string(&entry_id));

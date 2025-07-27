@@ -796,10 +796,12 @@ fn handle_client(
                             eprintln!("handling XREAD with key:{stream_name}, start:{start}");
                             {
                                 let mut lk = entry_streams.lock().unwrap();
-                                let curr_stream =
-                                    lk.entry(stream_name).or_insert(RedisEntryStream::new());
+                                let curr_stream = lk
+                                    .entry(stream_name.clone())
+                                    .or_insert(RedisEntryStream::new());
+                                eprintln!("curr stream{:?}", curr_stream);
 
-                                let res = curr_stream.xread_range(&start);
+                                let res = curr_stream.xread_range(&stream_name, &start);
                                 conn.write_to_stream(&res);
                             }
                         }
