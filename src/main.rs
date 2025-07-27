@@ -736,7 +736,7 @@ fn handle_client(
                             let r = lk.entry(stream_key);
                             let curr_stream = r.or_insert(EntryStream::new());
                             let res = &curr_stream.stream_id_response(&stream_id);
-                            eprintln!("xadd result:{:?}", res);
+                            eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
                             if res.0 {
                                 curr_stream.entries.insert(stream_id, (k, v));
                             }
