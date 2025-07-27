@@ -289,7 +289,7 @@ fn handle_client(
         match conn.try_read_command() {
             Ok(Some(commands)) => {
                 eprintln!("ALL COMMANDS:{:?}", commands);
-                eprintln!("current broadcast info:{:?}", broadcast_info);
+                //eprintln!("current broadcast info:{:?}", broadcast_info);
                 for all_lines in commands {
                     if all_lines.len() < 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
@@ -731,10 +731,12 @@ fn handle_client(
                             let stream_key = all_lines[1].clone();
                             let stream_id = all_lines[2].clone();
                             let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
+                            eprintln!("handling x_add with key:{stream_key}, id:{stream_id}, k:{k}, v:{v}");
                             let mut lk = entry_streams.lock().unwrap();
                             let r = lk.entry(stream_key);
                             let curr_stream = r.or_insert(EntryStream::new());
                             let res = &curr_stream.stream_id_response(&stream_id);
+                            eprintln!("xadd result:{:?}", res);
                             if res.0 {
                                 curr_stream.entries.insert(stream_id, (k, v));
                             }

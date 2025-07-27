@@ -31,10 +31,12 @@ impl EntryStream {
 
         match format!("{}{}", parts[0], parts[1]).parse::<usize>() {
             Ok(s) => {
+                eprintln!("found num:{s}");
                 if s < 1 {
+                    eprintln!("got 0");
                     return (false, ZERO_ERROR.into());
                 }
-                if self.last_id > s {
+                if self.last_id < s {
                     self.last_id = s;
                     return (true, get_bulk_string(id));
                 }
