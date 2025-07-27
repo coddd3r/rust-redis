@@ -5,31 +5,43 @@ use std::{
 
 use crate::utils::get_bulk_string;
 
-#[derive(Debug, Default, Clone)]
-pub struct EntryStream {
-    pub entries: HashMap<String, (String, String)>,
-    pub last_id: (usize, usize),
-    //pub sequences: HashMap<String, usize>,
-    pub sequences: HashMap<usize, usize>,
-}
+/*
+* XADD some_key 1526985054069-0 temperature 36 humidity 95
+* */
 
 const ZERO_ERROR: &[u8] = b"-ERR The ID specified in XADD must be greater than 0-0\r\n";
 const SMALLER_ERROR: &[u8] =
     b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
 
-impl EntryStream {
-    pub fn new() -> Self {
+#[derive(Debug, Default, Clone)]
+pub struct RedisEntry {
+    pub values: (String, String),
+    pub next_sequence_id: String,
+}
+
+impl RedisEntry {
+    pub fn new(v: (String, String)) -> Self {
         Self {
-            entries: HashMap::new(),
-            last_id: (0, 0),
-            sequences: HashMap::new(),
+            values: v,
+            next_sequence_id: String::new(),
         }
     }
-    //pub fn is_valid_id(&mut self, id: &str) -> bool {
-    //}
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RedisEntryStream {
+    pub entries: HashMap<String, RedisEntry>,
+    pub last_id: (usize, usize),
+    pub sequences: HashMap<usize, usize>,
+    pub last_sequence_id: String,
+}
+
+impl RedisEntryStream {
+    pub fn new() -> Self {
+        RedisEntryStream::default()
+    }
 
     pub fn get_next_sequence(&mut self, seq: usize) -> usize {
-        //let seq = seq.to_string();
         eprintln!("in get sequence, SEQUENCES:{:?}", self.sequences);
         let ret = self.sequences.entry(seq).or_insert(0).clone();
         *(self.sequences.get_mut(&seq).unwrap()) += 1;
@@ -87,23 +99,31 @@ impl EntryStream {
             return (true, get_bulk_string(&use_id));
         }
         return (false, SMALLER_ERROR.into());
+    }
 
-        // match format!("{}{}", parts[0], parts[1]).parse::<usize>() {
-        //     Ok(s) => {
-        //         eprintln!("found num:{s}");
-        //         if s < 1 {
-        //             eprintln!("got 0");
-        //             return (false, ZERO_ERROR.into());
-        //         }
-        //         if self.last_id < s {
-        //             self.last_id = s;
-        //             return (true, get_bulk_string(id));
-        //         }
-        //         return (false, SMALLER_ERROR.into());
-        //     }
-        //     Err(_) => {
-        //         return (false, SMALLER_ERROR.into());
-        //     }
-        // }
+    pub fn get_from_range(&self, start: &str, end: &str) {
+        let mut check_keys = Vec::new();
+        //let start_time = start.parse::<usize>().unwrap();
+        let start_time = format!("{start}-{}", 0);
+        match self.entries.get(&start_time) {
+            Some(ent) => {
+                let mut curr = ent;
+                let mut curr_id = &start_time;
+                loop {
+                    check_keys.push((
+                        curr_id.as_str(),
+                        (curr.values.0.as_str(), curr.values.1.as_str()),
+                    ));
+                    curr_id = &curr.next_sequence_id;
+                    curr = self.entries.get(curr_id).unwrap();
+                    if curr.next_sequence_id.is_empty()
+                        || curr.next_sequence_id.split("-").nth(0).unwrap() > end
+                    {
+                        break;
+                    }
+                }
+            }
+            None => {}
+        }
     }
 }

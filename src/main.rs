@@ -26,7 +26,7 @@ mod utils;
 use threadpool::ThreadPool;
 use tokio::sync::broadcast;
 
-use crate::entry_stream::EntryStream;
+use crate::entry_stream::{RedisEntry, RedisEntryStream};
 use crate::utils::{get_bulk_string, get_port, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
@@ -72,7 +72,7 @@ fn main() {
     let new_db = RedisDatabase::new();
 
     let mut new_db = Arc::new(Mutex::new(new_db));
-    let streams_db: HashMap<String, EntryStream> = HashMap::new();
+    let streams_db: HashMap<String, RedisEntryStream> = HashMap::new();
     let streams_db = Arc::new(Mutex::new(streams_db));
 
     let mut b = arg_list.into_iter();
@@ -241,7 +241,7 @@ fn handle_client(
     replica_port: &Option<&str>,
     master_port: &Option<String>,
     new_db: Arc<Mutex<RedisDatabase>>,
-    entry_streams: Arc<Mutex<HashMap<String, EntryStream>>>,
+    entry_streams: Arc<Mutex<HashMap<String, RedisEntryStream>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -728,19 +728,42 @@ fn handle_client(
                         }
 
                         "xadd" => {
-                            let stream_key = all_lines[1].clone();
+                            let stream_name = all_lines[1].clone();
                             let stream_id = all_lines[2].clone();
                             let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
-                            eprintln!("handling x_add with key:{stream_key}, id:{stream_id}, k:{k}, v:{v}");
+                            eprintln!("handling x_add with key:{stream_name}, id:{stream_id}, k:{k}, v:{v}");
+
                             let mut lk = entry_streams.lock().unwrap();
-                            let r = lk.entry(stream_key);
-                            let curr_stream = r.or_insert(EntryStream::new());
-                            let res = &curr_stream.stream_id_response(&stream_id);
+                            let curr_stream =
+                                lk.entry(stream_name).or_insert(RedisEntryStream::new());
+                            let res = curr_stream.stream_id_response(&stream_id);
                             eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
                             if res.0 {
-                                curr_stream.entries.insert(stream_id, (k, v));
+                                let prev_sequence_id = &curr_stream.last_sequence_id;
+                                let prev_entry =
+                                    curr_stream.entries.get_mut(prev_sequence_id).unwrap();
+
+                                let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
+                                prev_entry.next_sequence_id = use_entry_id.clone();
+                                let use_entry = RedisEntry::new((k, v));
+                                curr_stream.entries.insert(use_entry_id, use_entry);
                             }
                             conn.write_to_stream(&res.1);
+                        }
+
+                        "xrange" => {
+                            let stream_name = all_lines[1].clone();
+                            let start = all_lines[2].clone();
+                            let end = all_lines[3].clone();
+                            let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
+                            eprintln!("handling XRANGE with key:{stream_name}, start:{start}, end:{end}, k:{k}, v:{v}");
+                            {
+                                let mut lk = entry_streams.lock().unwrap();
+                                let curr_stream =
+                                    lk.entry(stream_name).or_insert(RedisEntryStream::new());
+
+                                curr_stream.get_from_range(&start, &end);
+                            }
                         }
 
                         "command" => {
