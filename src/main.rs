@@ -289,7 +289,7 @@ fn handle_client(
     loop {
         match conn.try_read_command() {
             Ok(Some(commands)) => {
-                eprintln!("ALL COMMANDS:{:?}", commands);
+                //eprintln!("ALL COMMANDS:{:?}", commands);
                 //eprintln!("current broadcast info:{:?}", broadcast_info);
                 for all_lines in commands {
                     if all_lines.len() < 1 {
@@ -744,17 +744,31 @@ fn handle_client(
                                 //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
                                 match prev_sequence_id {
                                     Some(p_id) => {
+                                        eprintln!("USING EXISTING SEQ ID");
                                         let prev_entry = curr_stream.entries.get_mut(p_id).unwrap();
                                         prev_entry.next_sequence_id = Some(stream_id.clone());
+                                        curr_stream.last_sequence_id = Some(stream_id.clone());
+                                        eprintln!("set prev entry:{:?}", prev_entry);
                                     }
                                     None => {
+                                        eprintln!("ADDING NEW SEQ ID");
                                         curr_stream.last_sequence_id = Some(stream_id.clone());
                                     }
                                 }
-                                let use_entry = RedisEntry::new((k, v));
+                                let mut use_vec = Vec::new();
+                                // map key values to each other in a tuple
+                                for i in 3..all_lines.len() {
+                                    if i % 2 == 0 {
+                                        continue;
+                                    }
+                                    use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
+                                }
+
+                                let use_entry = RedisEntry::new(use_vec);
+                                eprintln!("creating entry with vec:{:?}", use_entry);
                                 curr_stream.entries.insert(stream_id, use_entry);
+                                eprintln!("succesful insert curr stream:{:?}", curr_stream);
                             }
-                            eprintln!("succesful insert curr st_db:{:?}", entry_streams);
                             conn.write_to_stream(&res.1);
                         }
 

@@ -15,12 +15,12 @@ const SMALLER_ERROR: &[u8] =
 
 #[derive(Debug, Default, Clone)]
 pub struct RedisEntry {
-    pub values: (String, String),
+    pub values: Vec<(String, String)>,
     pub next_sequence_id: Option<String>,
 }
 
 impl RedisEntry {
-    pub fn new(v: (String, String)) -> Self {
+    pub fn new(v: Vec<(String, String)>) -> Self {
         Self {
             values: v,
             next_sequence_id: None,
@@ -30,7 +30,7 @@ impl RedisEntry {
 
 #[derive(Debug, Default, Clone)]
 pub struct RedisEntryStream {
-    pub entries: HashMap<String, Vec<RedisEntry>>,
+    pub entries: HashMap<String, RedisEntry>,
     pub last_id: (usize, usize),
     pub sequences: HashMap<usize, usize>,
     pub last_sequence_id: Option<String>,
@@ -107,7 +107,14 @@ impl RedisEntryStream {
         eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         //let start_time = start.parse::<usize>().unwrap();
-        let start_time = format!("{start}-{}", 0);
+        let start_time = {
+            if start.contains('-') {
+                start.to_string()
+            } else {
+                format!("{start}-{}", 0)
+            }
+        };
+
         eprintln!("using start:{start_time}");
         match self.entries.get(&start_time) {
             Some(ent) => {
@@ -125,10 +132,7 @@ impl RedisEntryStream {
                             }
 
                             curr = self.entries.get(curr_id.unwrap()).unwrap();
-                            check_keys.push((
-                                use_id.clone(),
-                                (curr.values.0.as_str(), curr.values.1.as_str()),
-                            ));
+                            check_keys.push((use_id.clone(), curr.values.clone()));
                             curr_id = curr.next_sequence_id.as_ref();
                         }
                         None => {
