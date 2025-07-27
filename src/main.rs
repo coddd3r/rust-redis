@@ -733,13 +733,12 @@ fn handle_client(
                             let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
                             let mut lk = entry_streams.lock().unwrap();
                             let r = lk.entry(stream_key);
-                            let x = r.or_insert(EntryStream::default());
-                            if x.is_valid_id(&stream_id) {
-                                x.entries.insert(stream_id, (k, v));
-                                conn.write_to_stream(&get_bulk_string("0-1"));
+                            let curr_stream = r.or_insert(EntryStream::new());
+                            let res = &curr_stream.stream_id_response(&stream_id);
+                            if res.0 {
+                                curr_stream.entries.insert(stream_id, (k, v));
                             }
-                            //TODO: invalid stream id
-                            conn.write_to_stream(&get_bulk_string("0-1"));
+                            conn.write_to_stream(&res.1);
                         }
 
                         "command" => {
