@@ -33,7 +33,7 @@ impl RedisEntry {
             use_vec.extend([&e.0.as_str(), &e.1.as_str()]);
         });
 
-        let mut resp = format!("*{}\r\n", use_vec.len() * 2).into_bytes();
+        let mut resp = format!("*{}\r\n", use_vec.len()).into_bytes();
         for element in use_vec {
             resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
         }
