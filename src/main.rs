@@ -777,7 +777,6 @@ fn handle_client(
                             let stream_name = all_lines[1].clone();
                             let start = all_lines[2].clone();
                             let end = all_lines[3].clone();
-                            //let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
                             eprintln!(
                                 "handling XRANGE with key:{stream_name}, start:{start}, end:{end}"
                             );
@@ -787,6 +786,20 @@ fn handle_client(
                                     lk.entry(stream_name).or_insert(RedisEntryStream::new());
 
                                 let res = curr_stream.get_from_range(&start, &end);
+                                conn.write_to_stream(&res);
+                            }
+                        }
+
+                        "xread" => {
+                            let stream_name = all_lines[2].clone();
+                            let start = all_lines[3].clone();
+                            eprintln!("handling XREAD with key:{stream_name}, start:{start}");
+                            {
+                                let mut lk = entry_streams.lock().unwrap();
+                                let curr_stream =
+                                    lk.entry(stream_name).or_insert(RedisEntryStream::new());
+
+                                let res = curr_stream.xread_range(&start);
                                 conn.write_to_stream(&res);
                             }
                         }
