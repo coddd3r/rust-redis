@@ -130,6 +130,13 @@ impl RedisEntryStream {
                 format!("{start}-{}", 0)
             }
         };
+        let end_id = {
+            if end == "+" {
+                self.last_sequence_id.as_ref().unwrap().as_str()
+            } else {
+                end
+            }
+        };
 
         eprintln!("using start:{start_time}");
         match self.entries.get(start_time) {
@@ -141,7 +148,7 @@ impl RedisEntryStream {
                     match curr_id {
                         Some(use_id) => {
                             eprintln!("found next wntry using id:{use_id}");
-                            if use_id.split("-").nth(0).unwrap() > end {
+                            if use_id.split("-").nth(0).unwrap() > end_id {
                                 eprintln!("GOT TO END of range breaking with:{:?}", check_keys);
                                 break;
                             }
