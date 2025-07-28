@@ -125,7 +125,7 @@ impl RedisEntryStream {
 
             return res.1;
         }
-        Vec::new()
+        SMALLER_ERROR.into()
     }
 
     pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
