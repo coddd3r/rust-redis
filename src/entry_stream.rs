@@ -101,6 +101,7 @@ impl RedisEntryStream {
                 }
             }
 
+            eprintln!("IN XADD waiting:{:?}", self.waiting_streams);
             if !self.waiting_streams.is_empty() {
                 eprintln!("\n WAITIN FORRR \n\n");
                 for (k, mut st) in &self.waiting_streams {

@@ -819,6 +819,7 @@ fn handle_client(
                                 //TODO: IF TIME STRING IS 0 add a blcoked stream conn clone to
                                 //waiting streams
 
+                                eprintln!("\n\n\nGOT BLOCK\n\n\n");
                                 let actual_time = time_str.as_ref().unwrap();
                                 full_block = actual_time == &0;
                                 time_to_block_for =
@@ -838,7 +839,11 @@ fn handle_client(
                                 eprintln!("curr stream{:?}", curr_stream);
 
                                 eprintln!("running xread for stream_name{:?}", &stream_name);
-                                if time_str.as_ref().is_ok() && time_str.as_ref().unwrap() == &0 {
+                                if block
+                                    && time_str.as_ref().is_ok()
+                                    && time_str.as_ref().unwrap() == &0
+                                {
+                                    eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
                                     curr_stream.waiting_streams.insert(
                                         stream_name.clone(),
                                         conn.stream.try_clone().unwrap(),
