@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{env, usize};
+use std::{alloc, env, usize};
 
 use codecrafters_redis::print_hex::{create_dummy_rdb, print_hex_dump};
 use codecrafters_redis::{
@@ -742,8 +742,19 @@ fn handle_client(
                                 lk.entry(stream_name).or_insert(RedisEntryStream::new());
                             let res = curr_stream.stream_id_response(&stream_id);
                             eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
+
                             if res.0 {
+                                let mut use_vec = Vec::new();
+                                // map key values to each other in a tuple
+                                for i in 3..all_lines.len() {
+                                    if i % 2 == 0 {
+                                        continue;
+                                    }
+                                    use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
+                                }
+
                                 let prev_sequence_id = &curr_stream.last_sequence_id;
+                                let use_entry = RedisEntry::new(use_vec, prev_sequence_id.clone());
                                 //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
                                 match prev_sequence_id {
                                     Some(p_id) => {
@@ -759,16 +770,7 @@ fn handle_client(
                                         curr_stream.last_sequence_id = Some(stream_id.clone());
                                     }
                                 }
-                                let mut use_vec = Vec::new();
-                                // map key values to each other in a tuple
-                                for i in 3..all_lines.len() {
-                                    if i % 2 == 0 {
-                                        continue;
-                                    }
-                                    use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
-                                }
 
-                                let use_entry = RedisEntry::new(use_vec);
                                 eprintln!("creating entry with vec:{:?}", use_entry);
                                 curr_stream.entries.insert(stream_id, use_entry);
                                 eprintln!("succesful insert curr stream:{:?}", curr_stream);
@@ -794,17 +796,41 @@ fn handle_client(
                         }
 
                         "xread" => {
-                            let all_streams = get_all_stream_names(&all_lines[2..]);
+                            let block = all_lines[1] == "block";
+                            let block_start_time = SystemTime::now();
+                            // TODO: check for invalid times
+                            let time_to_block_for =
+                                Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
+                            let all_streams = {
+                                if block {
+                                    sleep(time_to_block_for);
+                                    get_all_stream_names(&all_lines[4..])
+                                } else {
+                                    get_all_stream_names(&all_lines[2..])
+                                }
+                            };
+
                             let mut final_res = Vec::new();
+                            let mut lk = entry_streams.lock().unwrap();
                             for (stream_name, start) in all_streams {
-                                let mut lk = entry_streams.lock().unwrap();
                                 let curr_stream = lk
                                     .entry(stream_name.clone())
                                     .or_insert(RedisEntryStream::new());
                                 eprintln!("curr stream{:?}", curr_stream);
 
                                 eprintln!("running xread for stream_name{:?}", stream_name);
-                                let res = curr_stream.xread_range(&stream_name, &start);
+                                let res = {
+                                    if block {
+                                        curr_stream.block_xread(
+                                            &stream_name,
+                                            block_start_time,
+                                            time_to_block_for,
+                                            &start,
+                                        )
+                                    } else {
+                                        curr_stream.xread_range(&stream_name, &start)
+                                    }
+                                };
                                 //conn.write_to_stream(&res);
                                 if res.is_some() {
                                     final_res.push(res.unwrap())

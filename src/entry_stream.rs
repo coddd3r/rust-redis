@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::format,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::utils::get_bulk_string;
@@ -14,17 +14,21 @@ const ZERO_ERROR: &[u8] = b"-ERR The ID specified in XADD must be greater than 0
 const SMALLER_ERROR: &[u8] =
     b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct RedisEntry {
     pub values: Vec<(String, String)>,
     pub next_sequence_id: Option<String>,
+    pub prev_entry_id: Option<String>,
+    pub insertion_time: SystemTime,
 }
 
 impl RedisEntry {
-    pub fn new(v: Vec<(String, String)>) -> Self {
+    pub fn new(v: Vec<(String, String)>, prev_entry_id: Option<String>) -> Self {
         Self {
             values: v,
             next_sequence_id: None,
+            prev_entry_id,
+            insertion_time: SystemTime::now(),
         }
     }
 
@@ -121,6 +125,9 @@ impl RedisEntryStream {
     pub fn get_from_range(&self, start: &str, end: &str) -> Vec<u8> {
         eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
+        if self.first_sequence_id.is_none() {
+            return crate::RESP_NULL.into();
+        }
         let start_time = &{
             if start.chars().nth(0).unwrap() == '-' {
                 eprintln!("START IS \"-\"");
@@ -235,29 +242,141 @@ impl RedisEntryStream {
             }
         };
 
-        let start_time;
+        let start_id;
         if start_t.is_some() {
-            start_time = start_t.clone().unwrap();
+            start_id = start_t.clone().unwrap();
         } else {
             return None;
         }
 
-        eprintln!("using start:{start_time}");
-        match self.entries.get(&start_time) {
+        eprintln!("using start:{start_id}");
+        match self.entries.get(&start_id) {
             Some(ent) => {
                 eprintln!("got a start entry:{:?}", ent);
-                let mut curr_id = Some(&start_time);
+                let mut curr_id = Some(&start_id);
                 loop {
                     eprintln!("in range-loop");
                     match curr_id {
                         Some(use_id) => {
                             eprintln!("found next entry using id:{use_id}");
-                            let curr = self.entries.get(curr_id.unwrap()).unwrap();
+                            let curr = self.entries.get(use_id).unwrap();
                             check_keys.push((use_id.clone(), curr.clone()));
                             curr_id = curr.next_sequence_id.as_ref();
                         }
                         None => {
                             eprintln!("next id is none, breaking with:{:?}", check_keys);
+                            break;
+                        }
+                    }
+                }
+            }
+            None => {}
+        }
+
+        eprintln!("Got check keys:{:?}", check_keys);
+
+        Some((stream_name.to_string(), check_keys))
+    }
+
+    pub fn block_xread(
+        &self,
+        stream_name: &str,
+        block_start_time: SystemTime,
+        time_to_block_for: Duration,
+        start: &str,
+    ) -> Option<(String, Vec<(String, RedisEntry)>)> {
+        eprintln!(
+            "IN XBLOCK FUNC checking for entries starting:{:?}\n, until {:?}\n, blocking for {:?}\n, curr entries:{:?}",
+            block_start_time,
+            block_start_time + time_to_block_for,
+            time_to_block_for,
+            self.entries
+        );
+        let mut check_keys = Vec::new();
+        if self.first_sequence_id.is_none() && self.last_sequence_id.is_none() {
+            return None;
+        }
+        // the last id to use checking for items added during block
+        // default last sequence id used
+        let block_start = {
+            if self.last_sequence_id.is_none() && self.first_sequence_id.is_some() {
+                &self.first_sequence_id
+            } else {
+                &self.last_sequence_id
+            }
+        };
+
+        let start_t = {
+            if self.first_sequence_id.is_none() {
+                eprintln!("empty stream");
+                eprintln!("No fierst seq id");
+                None
+            } else if self.first_sequence_id.is_some() {
+                if self
+                    .first_sequence_id
+                    .clone()
+                    .unwrap()
+                    .split('-')
+                    .into_iter()
+                    .ge(start.split('-').into_iter())
+                {
+                    self.first_sequence_id.clone()
+                } else {
+                    eprintln!("in coparison returning start time none");
+                    None
+                }
+            } else if *start < *self.first_sequence_id.clone().unwrap() {
+                self.first_sequence_id.clone()
+            } else if start == "-" {
+                Some(self.first_sequence_id.clone().unwrap())
+            } else if start.contains('-') {
+                let excl_id = start.to_string();
+
+                match self.entries.get(&excl_id) {
+                    Some(ent) => Some(ent.next_sequence_id.clone().unwrap()),
+                    None => {
+                        eprintln!("in exclusive returning start None");
+                        None
+                    }
+                }
+            } else {
+                Some(format!("{start}-{}", 0))
+            }
+        };
+
+        let start_id;
+        if start_t.is_some() {
+            start_id = start_t.clone().unwrap();
+        } else {
+            eprintln!("breaking starttime none");
+            return None;
+        }
+
+        match self.entries.get(block_start.as_ref().unwrap()) {
+            Some(ent) => {
+                eprintln!("got a start entry:{:?}", ent);
+                let mut curr_id = block_start;
+                loop {
+                    eprintln!("in range-loop");
+                    match curr_id {
+                        Some(use_id) => {
+                            eprintln!("found prev entry using id:{use_id}");
+                            if use_id < &start_id {
+                                eprintln!("BREAKING XBLOCK went below seq start");
+                                break;
+                            }
+                            let curr = self.entries.get(use_id).unwrap();
+                            if curr.insertion_time < block_start_time
+                                || curr.insertion_time > block_start_time + time_to_block_for
+                            {
+                                eprintln!("BLOCK EXCEEDED time, breaking\n\n");
+                                break;
+                            }
+                            check_keys.push((use_id.clone(), curr.clone()));
+                            curr_id = &curr.prev_entry_id;
+                        }
+                        None => {
+                            eprintln!("PREVIOUS id is none, breaking with:{:?}", check_keys);
                             break;
                         }
                     }
