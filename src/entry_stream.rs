@@ -122,15 +122,12 @@ impl RedisEntryStream {
             self.entries.insert(entry_id.to_string(), use_entry);
 
             eprintln!("succesful insert curr stream:{:?}", self);
-
-            return res.1;
         }
-        SMALLER_ERROR.into()
+        res.1
     }
 
     pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
         let mut parts: Vec<_> = Vec::new();
-        eprintln!("max usize:{}", usize::MAX);
 
         if id == "*" {
             let start = SystemTime::now();
