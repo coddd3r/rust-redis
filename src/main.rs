@@ -26,8 +26,6 @@ mod threadpool;
 mod utils;
 
 use threadpool::ThreadPool;
-use tokio::stream;
-use tokio::sync::broadcast;
 
 use crate::entry_stream::{RedisEntry, RedisEntryStream};
 use crate::entry_utils::{get_all_stream_names, get_xread_resp_array};
@@ -42,7 +40,6 @@ const MASTER_REPL_OFFSET: &str = "master_repl_offset";
 const MASTER_REPL_ID: &str = "master_replid";
 const REPL_CONF: &str = "REPLCONF";
 const GETACK: &str = "GETACK";
-const DIFF: &str = "DIFF";
 const ACK: &str = "ACK";
 const LISTENING_PORT: &str = "listening-port";
 const PSYNC: &str = "PSYNC";
@@ -84,11 +81,9 @@ fn main() {
         match a.as_str() {
             "--dir" => {
                 dir = b.next();
-                eprintln!("GOT DIR");
             }
             "--dbfilename" => {
                 db_filename = b.next();
-                eprintln!("GOT ILE");
                 if db_filename.is_some() && dir.is_some() {
                     let file = db_filename.as_ref().unwrap();
                     let directory = dir.as_ref().unwrap();
@@ -824,7 +819,9 @@ fn handle_client(
                                 full_block = actual_time == &0;
                                 time_to_block_for =
                                     Duration::from_millis(*time_str.as_ref().unwrap());
-                                sleep(time_to_block_for);
+                                if !full_block {
+                                    sleep(time_to_block_for);
+                                }
                                 all_streams = get_all_stream_names(&all_lines[4..]);
                             } else {
                                 all_streams = get_all_stream_names(&all_lines[2..]);

@@ -100,7 +100,6 @@ impl RespConnection {
                 self.buffer.extend_from_slice(&temp_buf[..n]);
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                //std::thread::sleep(Duration::from_millis(5));
                 return Ok(None);
             }
             Err(e) => {
@@ -145,8 +144,6 @@ impl RespConnection {
                     continue;
                 }
                 self.position += line.len() + 1;
-                //eprintln!("after:{}", self.position);
-                //eprintln!("checking line:{:?}", String::from_utf8_lossy(line.into()));
                 let line_str = match String::from_utf8(line.to_vec()) {
                     Ok(s) => s,
                     Err(_) => {
@@ -154,12 +151,9 @@ impl RespConnection {
                     } //if not valid utf8 keep going
                 };
 
-                eprintln!("line str valid {:?}", line_str);
                 match line_str.chars().next() {
                     // Resp array section
                     Some('*') => {
-                        //eprintln!("\nMATCHED A RESP LINE!!{:?}\n", line_str);
-
                         let arr_length = match line_str[1..].trim().parse::<usize>() {
                             Ok(n) => n,
                             Err(_) => {
@@ -183,17 +177,9 @@ impl RespConnection {
                                     break;
                                 }
                             };
-                            //  eprintln!(
-                            //      "adding length{} for line:{:?}, pos before:{}",
-                            //      size_line.len() + 1,
-                            //      size_line,
-                            //      self.position
-                            //  );
                             self.position += line.len() + 1;
-                            //eprintln!("after:{}", self.position);
 
                             if !size_line.starts_with('$') {
-                                //  eprintln!("FAKE SIZE LINE");
                                 valid = false;
                                 break;
                             }
@@ -206,22 +192,13 @@ impl RespConnection {
                                 }
                             };
 
-                            //eprintln!("in resp got size:{size}, from size_line:{:?}", size_line);
                             let mut content = match lines.next() {
                                 Some(line) => {
-                                    eprintln!(
-                                        "adding length{} for line:{:?}, pos before:{}",
-                                        line.len() + 1,
-                                        String::from_utf8_lossy(&line),
-                                        self.position
-                                    );
                                     self.position += line.len() + 1;
-                                    //      eprintln!("after:{}", self.position);
 
                                     match String::from_utf8(line.to_vec()) {
                                         Ok(s) => s,
                                         Err(_) => {
-                                            //            eprintln!("breaking in conversion of line to utf8 insdie resp arr");
                                             valid = false;
                                             break;
                                         }
@@ -238,7 +215,6 @@ impl RespConnection {
                             //RESP ARRAY DECODED WRONG
                             if content.len() != size {
                                 //    eprintln!("breaking because content is not the same size");
-                                valid = false;
                                 break;
                             }
 
@@ -314,26 +290,12 @@ impl RespConnection {
             }
         }
         eprintln!(
-            "AFTER RDB commands?{:?}, pos:{}, buffer len:{}",
+            "AFTER PARSE commands?{:?}, pos:{}, buffer len:{}",
             commands,
             self.position,
             self.buffer.len()
         );
 
-        if commands.iter().any(|e| e.iter().any(|f| f == crate::DIFF)) {
-            eprintln!("\n\nIGNORING DIFF COMMAND IN OFFSET\n\n");
-            let diff_len = self
-                .format_resp_array(&[crate::REPL_CONF, crate::DIFF])
-                .len();
-            eprintln!(
-                "before subtraction prev:{}, curr:{}, diff len:{diff_len}",
-                self.prev_offset, self.offset
-            );
-
-            let temp = self.offset + 0 - number_of_bytes_read;
-            self.offset = self.offset - diff_len;
-            self.prev_offset = self.prev_offset - temp;
-        }
         Ok(Some(commands))
     }
 

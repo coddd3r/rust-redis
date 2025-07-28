@@ -3,6 +3,7 @@ use std::{
     fmt::format,
     io::Write,
     net::TcpStream,
+    thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -101,6 +102,8 @@ impl RedisEntryStream {
                 }
             }
 
+            //NOTE: Wait for block to be added
+            sleep(Duration::from_millis(100));
             eprintln!("IN XADD waiting:{:?}", self.waiting_streams);
             if !self.waiting_streams.is_empty() {
                 eprintln!("\n WAITIN FORRR \n\n");
