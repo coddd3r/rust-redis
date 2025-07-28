@@ -20,14 +20,17 @@ use codecrafters_redis::{
 };
 
 mod entry_stream;
+mod entry_utils;
 mod resp_parser;
 mod threadpool;
 mod utils;
 
 use threadpool::ThreadPool;
+use tokio::stream;
 use tokio::sync::broadcast;
 
 use crate::entry_stream::{RedisEntry, RedisEntryStream};
+use crate::entry_utils::{get_all_stream_names, get_xread_resp_array};
 use crate::utils::{get_bulk_string, get_port, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
@@ -791,19 +794,28 @@ fn handle_client(
                         }
 
                         "xread" => {
-                            let stream_name = all_lines[2].clone();
-                            let start = all_lines[3].clone();
-                            eprintln!("handling XREAD with key:{stream_name}, start:{start}");
-                            {
+                            let all_streams = get_all_stream_names(&all_lines[2..]);
+                            let mut final_res = Vec::new();
+                            for (stream_name, start) in all_streams {
                                 let mut lk = entry_streams.lock().unwrap();
                                 let curr_stream = lk
                                     .entry(stream_name.clone())
                                     .or_insert(RedisEntryStream::new());
                                 eprintln!("curr stream{:?}", curr_stream);
 
+                                eprintln!("running xread for stream_name{:?}", stream_name);
                                 let res = curr_stream.xread_range(&stream_name, &start);
-                                conn.write_to_stream(&res);
+                                //conn.write_to_stream(&res);
+                                if res.is_some() {
+                                    final_res.push(res.unwrap())
+                                }
                             }
+                            let full_stream_bytes = get_xread_resp_array(&final_res);
+                            eprintln!(
+                                "FINAL xread res:{:?}",
+                                String::from_utf8_lossy(&full_stream_bytes)
+                            );
+                            conn.write_to_stream(&full_stream_bytes);
                         }
 
                         "command" => {
