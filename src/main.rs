@@ -814,13 +814,15 @@ fn handle_client(
                                 //TODO: IF TIME STRING IS 0 add a blcoked stream conn clone to
                                 //waiting streams
 
-                                eprintln!("\n\n\nGOT BLOCK\n\n\n");
+                                eprintln!("\n\n\nGOT BLOCK with time{}\n\n\n", all_lines[2]);
                                 let actual_time = time_str.as_ref().unwrap();
                                 full_block = actual_time == &0;
                                 time_to_block_for =
                                     Duration::from_millis(*time_str.as_ref().unwrap());
                                 if !full_block {
                                     sleep(time_to_block_for);
+                                } else {
+                                    eprintln!("\n\nFULL BLOCK\n\n");
                                 }
                                 all_streams = get_all_stream_names(&all_lines[4..]);
                             } else {
@@ -836,16 +838,14 @@ fn handle_client(
                                 eprintln!("curr stream{:?}", curr_stream);
 
                                 eprintln!("running xread for stream_name{:?}", &stream_name);
-                                if block
-                                    && time_str.as_ref().is_ok()
-                                    && time_str.as_ref().unwrap() == &0
-                                {
+                                if full_block {
                                     eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
                                     curr_stream.waiting_streams.insert(
                                         stream_name.clone(),
                                         conn.stream.try_clone().unwrap(),
                                     );
                                 } else {
+                                    eprintln!("\n\n\nNOT full block\n\n\n");
                                     let res = {
                                         if block {
                                             curr_stream.block_xread(
