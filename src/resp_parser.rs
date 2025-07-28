@@ -327,7 +327,9 @@ impl RespConnection {
             .write_all(&buf)
             .expect("in RespConn failed to write to steam");
         eprintln!("AFTER STREAM in write");
-        sleep(Duration::from_millis(5));
+        //NOTE: removed int debugging xread block 0
+        //
+        // sleep(Duration::from_millis(5));
     }
 
     pub fn get_simple_str(&self, s: &str) -> Vec<u8> {
