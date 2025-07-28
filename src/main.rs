@@ -799,10 +799,11 @@ fn handle_client(
                             let block = all_lines[1] == "block";
                             let block_start_time = SystemTime::now();
                             // TODO: check for invalid times
-                            let time_to_block_for =
-                                Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
+                            let mut time_to_block_for: Duration = Duration::from_millis(0);
                             let all_streams = {
                                 if block {
+                                    time_to_block_for =
+                                        Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
                                     sleep(time_to_block_for);
                                     get_all_stream_names(&all_lines[4..])
                                 } else {
