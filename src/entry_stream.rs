@@ -1,10 +1,12 @@
 use std::{
     collections::HashMap,
     fmt::format,
+    io::Write,
+    net::TcpStream,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::utils::get_bulk_string;
+use crate::{entry_utils::get_xread_resp_array, utils::get_bulk_string};
 
 /*
 * XADD some_key 1526985054069-0 temperature 36 humidity 95
@@ -13,6 +15,12 @@ use crate::utils::get_bulk_string;
 const ZERO_ERROR: &[u8] = b"-ERR The ID specified in XADD must be greater than 0-0\r\n";
 const SMALLER_ERROR: &[u8] =
     b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
+
+//#[derive(Debug)]
+//pub struct WaitingStream {
+//    pub blocked_conn: TcpStream,
+//    pub stream_id: String,
+//}
 
 #[derive(Debug, Clone)]
 pub struct RedisEntry {
@@ -46,13 +54,15 @@ impl RedisEntry {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct RedisEntryStream {
     pub entries: HashMap<String, RedisEntry>,
     pub last_id: (usize, usize),
     pub sequences: HashMap<usize, usize>,
-    pub last_sequence_id: Option<String>,
     pub first_sequence_id: Option<String>,
+    pub last_sequence_id: Option<String>,
+    //TODO: hashmap or vec?
+    pub waiting_streams: HashMap<String, TcpStream>,
 }
 
 impl RedisEntryStream {
@@ -66,6 +76,52 @@ impl RedisEntryStream {
         *(self.sequences.get_mut(&seq).unwrap()) += 1;
         eprintln!("in get sequence, returning:{ret}");
         ret
+    }
+
+    pub fn handle_add(&mut self, entry_id: &str, use_vec: Vec<(String, String)>) -> Vec<u8> {
+        let res = self.stream_id_response(&entry_id);
+        eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
+
+        if res.0 {
+            let prev_sequence_id = &self.last_sequence_id;
+            let use_entry = RedisEntry::new(use_vec, prev_sequence_id.clone());
+            //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
+            match prev_sequence_id {
+                Some(p_id) => {
+                    eprintln!("USING EXISTING SEQ ID");
+                    let prev_entry = self.entries.get_mut(p_id).unwrap();
+                    prev_entry.next_sequence_id = Some(entry_id.to_string());
+                    self.last_sequence_id = Some(entry_id.to_string());
+                    eprintln!("set prev entry:{:?}", prev_entry);
+                }
+                None => {
+                    eprintln!("ADDING NEW SEQ ID");
+                    self.first_sequence_id = Some(entry_id.to_string());
+                    self.last_sequence_id = Some(entry_id.to_string());
+                }
+            }
+
+            if !self.waiting_streams.is_empty() {
+                eprintln!("\n WAITIN FORRR \n\n");
+                for (k, mut st) in &self.waiting_streams {
+                    let mut resp_args = Vec::new();
+                    let mut stream_id_and_entry = Vec::new();
+                    stream_id_and_entry.push((entry_id.to_string(), use_entry.clone()));
+                    resp_args.push((k.clone(), stream_id_and_entry));
+                    st.write_all(&get_xread_resp_array(&resp_args)).unwrap();
+                }
+                eprintln!("AFTER FOR");
+                self.waiting_streams = HashMap::new();
+            }
+
+            eprintln!("creating entry with vec:{:?}", use_entry);
+            self.entries.insert(entry_id.to_string(), use_entry);
+
+            eprintln!("succesful insert curr stream:{:?}", self);
+
+            return res.1;
+        }
+        Vec::new()
     }
 
     pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
@@ -112,6 +168,7 @@ impl RedisEntryStream {
             eprintln!("got 0");
             return (false, ZERO_ERROR.into());
         }
+
         if parts[0] > self.last_id.0 || (parts[0] == self.last_id.0 && parts[1] > self.last_id.1) {
             eprintln!("parts[0] GREATER?");
             self.last_id = (parts[0], parts[1]);
@@ -119,6 +176,7 @@ impl RedisEntryStream {
             eprintln!("returning id:{use_id}");
             return (true, get_bulk_string(&use_id));
         }
+
         return (false, SMALLER_ERROR.into());
     }
 
@@ -128,6 +186,7 @@ impl RedisEntryStream {
         if self.first_sequence_id.is_none() {
             return crate::RESP_NULL.into();
         }
+
         let start_time = &{
             if start.chars().nth(0).unwrap() == '-' {
                 eprintln!("START IS \"-\"");
@@ -193,12 +252,14 @@ impl RedisEntryStream {
             eprintln!("getting resp arr for empty");
             return crate::RESP_NULL.into();
         }
+
         let mut resp = format!("*{}\r\n", v.len()).into_bytes();
         v.iter().for_each(|(entry_id, ent)| {
             resp.extend(b"*2\r\n");
             resp.extend(get_bulk_string(&entry_id));
             resp.extend(ent.entry_resp_array());
         });
+
         resp
     }
     //pub fn xread_range(&self, stream_name: &str, start: &str) -> Vec<u8> {

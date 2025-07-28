@@ -54,7 +54,6 @@ impl BroadCastInfo {
 
 #[derive(Debug)]
 pub struct RespConnection {
-    //pub stream: Arc<Mutex<TcpStream>>,
     pub stream: TcpStream,
     pub buffer: Vec<u8>,
     pub position: usize,
@@ -66,11 +65,6 @@ pub struct RespConnection {
 impl RespConnection {
     //pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
     pub fn new(stream: TcpStream) -> Self {
-        // {
-        //     let lk = stream.lock().unwrap();
-        //     lk.set_nonblocking(true)
-        //         .expect("Failed to set non-blocking");
-        // }
         stream.set_nonblocking(true).unwrap();
         RespConnection {
             stream: stream,
@@ -86,7 +80,6 @@ impl RespConnection {
         // Read available data
 
         //eprintln!("stream in read");
-        //let mut stream = self.stream.lock().unwrap();
         let mut temp_buf = [0; 4096];
         let buf_size_before = self.buffer.len();
 

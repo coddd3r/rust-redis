@@ -740,42 +740,53 @@ fn handle_client(
                             let mut lk = entry_streams.lock().unwrap();
                             let curr_stream =
                                 lk.entry(stream_name).or_insert(RedisEntryStream::new());
-                            let res = curr_stream.stream_id_response(&stream_id);
-                            eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
 
-                            if res.0 {
-                                let mut use_vec = Vec::new();
-                                // map key values to each other in a tuple
-                                for i in 3..all_lines.len() {
-                                    if i % 2 == 0 {
-                                        continue;
-                                    }
-                                    use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
+                            let mut use_vec = Vec::new();
+                            // map key values to each other in a tuple
+                            for i in 3..all_lines.len() {
+                                if i % 2 == 0 {
+                                    continue;
                                 }
-
-                                let prev_sequence_id = &curr_stream.last_sequence_id;
-                                let use_entry = RedisEntry::new(use_vec, prev_sequence_id.clone());
-                                //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
-                                match prev_sequence_id {
-                                    Some(p_id) => {
-                                        eprintln!("USING EXISTING SEQ ID");
-                                        let prev_entry = curr_stream.entries.get_mut(p_id).unwrap();
-                                        prev_entry.next_sequence_id = Some(stream_id.clone());
-                                        curr_stream.last_sequence_id = Some(stream_id.clone());
-                                        eprintln!("set prev entry:{:?}", prev_entry);
-                                    }
-                                    None => {
-                                        eprintln!("ADDING NEW SEQ ID");
-                                        curr_stream.first_sequence_id = Some(stream_id.clone());
-                                        curr_stream.last_sequence_id = Some(stream_id.clone());
-                                    }
-                                }
-
-                                eprintln!("creating entry with vec:{:?}", use_entry);
-                                curr_stream.entries.insert(stream_id, use_entry);
-                                eprintln!("succesful insert curr stream:{:?}", curr_stream);
+                                use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
                             }
-                            conn.write_to_stream(&res.1);
+
+                            let res = curr_stream.handle_add(&stream_id.as_str(), use_vec);
+
+                            //let res = curr_stream.stream_id_response(&stream_id);
+                            // if res.0 {
+                            //     let mut use_vec = Vec::new();
+                            //     // map key values to each other in a tuple
+                            //     for i in 3..all_lines.len() {
+                            //         if i % 2 == 0 {
+                            //             continue;
+                            //         }
+                            //         use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
+                            //     }
+
+                            //     let prev_sequence_id = &curr_stream.last_sequence_id;
+                            //     let use_entry = RedisEntry::new(use_vec, prev_sequence_id.clone());
+                            //     //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
+                            //     match prev_sequence_id {
+                            //         Some(p_id) => {
+                            //             eprintln!("USING EXISTING SEQ ID");
+                            //             let prev_entry = curr_stream.entries.get_mut(p_id).unwrap();
+                            //             prev_entry.next_sequence_id = Some(stream_id.clone());
+                            //             curr_stream.last_sequence_id = Some(stream_id.clone());
+                            //             eprintln!("set prev entry:{:?}", prev_entry);
+                            //         }
+                            //         None => {
+                            //             eprintln!("ADDING NEW SEQ ID");
+                            //             curr_stream.first_sequence_id = Some(stream_id.clone());
+                            //             curr_stream.last_sequence_id = Some(stream_id.clone());
+                            //         }
+                            //     }
+
+                            //     eprintln!("creating entry with vec:{:?}", use_entry);
+                            //     curr_stream.entries.insert(stream_id, use_entry);
+
+                            //     eprintln!("succesful insert curr stream:{:?}", curr_stream);
+                            // }
+                            conn.write_to_stream(&res);
                         }
 
                         "xrange" => {
@@ -800,16 +811,23 @@ fn handle_client(
                             let block_start_time = SystemTime::now();
                             // TODO: check for invalid times
                             let mut time_to_block_for: Duration = Duration::from_millis(0);
-                            let all_streams = {
-                                if block {
-                                    time_to_block_for =
-                                        Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
-                                    sleep(time_to_block_for);
-                                    get_all_stream_names(&all_lines[4..])
-                                } else {
-                                    get_all_stream_names(&all_lines[2..])
-                                }
-                            };
+                            let all_streams;
+
+                            let time_str = all_lines[2].parse::<u64>();
+                            let mut full_block = false;
+                            if block {
+                                //TODO: IF TIME STRING IS 0 add a blcoked stream conn clone to
+                                //waiting streams
+
+                                let actual_time = time_str.as_ref().unwrap();
+                                full_block = actual_time == &0;
+                                time_to_block_for =
+                                    Duration::from_millis(*time_str.as_ref().unwrap());
+                                sleep(time_to_block_for);
+                                all_streams = get_all_stream_names(&all_lines[4..]);
+                            } else {
+                                all_streams = get_all_stream_names(&all_lines[2..]);
+                            }
 
                             let mut final_res = Vec::new();
                             let mut lk = entry_streams.lock().unwrap();
@@ -819,30 +837,40 @@ fn handle_client(
                                     .or_insert(RedisEntryStream::new());
                                 eprintln!("curr stream{:?}", curr_stream);
 
-                                eprintln!("running xread for stream_name{:?}", stream_name);
-                                let res = {
-                                    if block {
-                                        curr_stream.block_xread(
-                                            &stream_name,
-                                            block_start_time,
-                                            time_to_block_for,
-                                            &start,
-                                        )
-                                    } else {
-                                        curr_stream.xread_range(&stream_name, &start)
+                                eprintln!("running xread for stream_name{:?}", &stream_name);
+                                if time_str.as_ref().is_ok() && time_str.as_ref().unwrap() == &0 {
+                                    curr_stream.waiting_streams.insert(
+                                        stream_name.clone(),
+                                        conn.stream.try_clone().unwrap(),
+                                    );
+                                } else {
+                                    let res = {
+                                        if block {
+                                            curr_stream.block_xread(
+                                                &stream_name,
+                                                block_start_time,
+                                                time_to_block_for,
+                                                &start,
+                                            )
+                                        } else {
+                                            curr_stream.xread_range(&stream_name, &start)
+                                        }
+                                    };
+                                    //conn.write_to_stream(&res);
+                                    if res.is_some() {
+                                        final_res.push(res.unwrap())
                                     }
-                                };
-                                //conn.write_to_stream(&res);
-                                if res.is_some() {
-                                    final_res.push(res.unwrap())
                                 }
                             }
+
                             let full_stream_bytes = get_xread_resp_array(&final_res);
                             eprintln!(
                                 "FINAL xread res:{:?}",
                                 String::from_utf8_lossy(&full_stream_bytes)
                             );
-                            conn.write_to_stream(&full_stream_bytes);
+                            if !full_block {
+                                conn.write_to_stream(&full_stream_bytes);
+                            }
                         }
 
                         "command" => {
