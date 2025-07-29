@@ -7,15 +7,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use crate::constants::*;
 use crate::{entry_utils::get_xread_resp_array, utils::get_bulk_string};
 
 /*
 * XADD some_key 1526985054069-0 temperature 36 humidity 95
 * */
-
-const ZERO_ERROR: &[u8] = b"-ERR The ID specified in XADD must be greater than 0-0\r\n";
-const SMALLER_ERROR: &[u8] =
-    b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
 
 //#[derive(Debug)]
 //pub struct WaitingStream {
@@ -41,15 +38,15 @@ impl RedisEntry {
         }
     }
 
-    pub fn entry_resp_array(&self) -> Vec<u8> {
+    pub fn entry_resp_array(&self) -> String {
         let mut use_vec: Vec<&str> = Vec::new();
         self.values.iter().for_each(|e| {
             use_vec.extend([&e.0.as_str(), &e.1.as_str()]);
         });
 
-        let mut resp = format!("*{}\r\n", use_vec.len()).into_bytes();
+        let mut resp = format!("*{}\r\n", use_vec.len());
         for element in use_vec {
-            resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+            resp.push_str(&format!("${}\r\n{}\r\n", element.len(), element));
         }
         resp
     }
@@ -79,9 +76,11 @@ impl RedisEntryStream {
         ret
     }
 
-    pub fn handle_add(&mut self, entry_id: &str, use_vec: Vec<(String, String)>) -> Vec<u8> {
+    //pub fn handle_add(&mut self, entry_id: &str, use_vec: Vec<(String, String)>) -> Vec<u8> {
+    pub fn handle_add(&mut self, entry_id: &str, use_vec: Vec<(String, String)>) -> String {
         let res = self.stream_id_response(&entry_id);
-        eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
+        //eprintln!("xadd result:{:?}", String::from_utf8_lossy(&res.1));
+        eprintln!("xadd result:{:?}", &res.1);
 
         if res.0 {
             let prev_sequence_id = &self.last_sequence_id;
@@ -110,7 +109,8 @@ impl RedisEntryStream {
                     let mut stream_id_and_entry = Vec::new();
                     stream_id_and_entry.push((entry_id.to_string(), use_entry.clone()));
                     resp_args.push((k.clone(), stream_id_and_entry));
-                    st.write_all(&get_xread_resp_array(&resp_args)).unwrap();
+                    st.write_all(&get_xread_resp_array(&resp_args).as_bytes())
+                        .unwrap();
                 }
                 eprintln!("AFTER FOR");
                 self.waiting_streams = HashMap::new();
@@ -124,7 +124,8 @@ impl RedisEntryStream {
         res.1
     }
 
-    pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
+    //pub fn stream_id_response(&mut self, id: &str) -> (bool, Vec<u8>) {
+    pub fn stream_id_response(&mut self, id: &str) -> (bool, String) {
         let mut parts: Vec<_> = Vec::new();
 
         if id == "*" {
@@ -156,7 +157,8 @@ impl RedisEntryStream {
 
                         parts.push(seq_num);
                     } else {
-                        return (false, SMALLER_ERROR.into());
+                        //return (false, SMALLER_ERROR.into());
+                        return (false, SMALLER_ERROR.to_string());
                     }
                 }
             }
@@ -179,7 +181,8 @@ impl RedisEntryStream {
         return (false, SMALLER_ERROR.into());
     }
 
-    pub fn get_from_range(&self, start: &str, end: &str) -> Vec<u8> {
+    //pub fn get_from_range(&self, start: &str, end: &str) -> Vec<u8> {
+    pub fn get_from_range(&self, start: &str, end: &str) -> String {
         eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         if self.first_sequence_id.is_none() {
@@ -239,24 +242,21 @@ impl RedisEntryStream {
 
         eprintln!("Got check keys:{:?}", check_keys);
         let resp_arrays = self.get_stream_resp_array(&check_keys);
-        eprintln!(
-            "resp arrays as resp:{:?}",
-            String::from_utf8_lossy(&resp_arrays)
-        );
+        eprintln!("resp arrays as resp:{:?}", resp_arrays);
         resp_arrays
     }
 
-    pub fn get_stream_resp_array(&self, v: &Vec<(String, RedisEntry)>) -> Vec<u8> {
+    pub fn get_stream_resp_array(&self, v: &Vec<(String, RedisEntry)>) -> String {
         if v.is_empty() {
             eprintln!("getting resp arr for empty");
             return crate::RESP_NULL.into();
         }
 
-        let mut resp = format!("*{}\r\n", v.len()).into_bytes();
+        let mut resp = format!("*{}\r\n", v.len());
         v.iter().for_each(|(entry_id, ent)| {
-            resp.extend(b"*2\r\n");
-            resp.extend(get_bulk_string(&entry_id));
-            resp.extend(ent.entry_resp_array());
+            resp.push_str("*2\r\n");
+            resp.push_str(&get_bulk_string(&entry_id));
+            resp.push_str(&ent.entry_resp_array());
         });
 
         resp

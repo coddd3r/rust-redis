@@ -17,21 +17,26 @@ use codecrafters_redis::{
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
 
-pub fn get_bulk_string(res: &str) -> Vec<u8> {
+//pub fn get_bulk_string(res: &str) -> Vec<u8> {
+pub fn get_bulk_string(res: &str) -> String {
     //fn get_bulk_string(res: &str) -> &[u8] {
     let res_size = res.len();
-    [
-        b"$",
-        res_size.to_string().as_bytes(),
-        b"\r\n",
-        res.as_bytes(),
-        b"\r\n",
-    ]
-    .concat()
+    // [
+    //     b"$",
+    //     res_size.to_string().as_bytes(),
+    //     b"\r\n",
+    //     res.as_bytes(),
+    //     b"\r\n",
+    // ]
+    // .concat()
+
+    format!("${res_size}\r\n{res}\r\n")
 }
 
-pub fn get_redis_int(n: i32) -> Vec<u8> {
-    format!(":{n}\r\n").as_bytes().into()
+//pub fn get_redis_int(n: i32) -> Vec<u8> {
+pub fn get_redis_int(n: i32) -> String {
+    //format!(":{n}\r\n").as_bytes().into()
+    format!(":{n}\r\n")
 }
 pub fn random_id_gen() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\

@@ -307,13 +307,15 @@ impl RespConnection {
         let resp = self.format_resp_array(&s);
         // let mut stream = self.stream.lock().unwrap();
         //stream.write_all(&resp)
-        self.write_to_stream(&resp);
+        self.write_to_stream(resp.as_bytes());
     }
 
-    pub fn format_resp_array(&self, elements: &[&str]) -> Vec<u8> {
-        let mut resp = format!("*{}\r\n", elements.len()).into_bytes();
+    //pub fn format_resp_array(&self, elements: &[&str]) -> Vec<u8> {
+    pub fn format_resp_array(&self, elements: &[&str]) -> String {
+        let mut resp = format!("*{}\r\n", elements.len()); //.into_bytes();
         for element in elements {
-            resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+            //resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+            resp.push_str(&format!("${}\r\n{}\r\n", element.len(), element));
         }
         resp
     }
@@ -334,9 +336,13 @@ impl RespConnection {
         // sleep(Duration::from_millis(5));
     }
 
-    pub fn get_simple_str(&self, s: &str) -> Vec<u8> {
-        let ret = format!("+{s}\r\n");
-        ret.as_bytes().into()
+    // pub fn get_simple_str(&self, s: &str) -> Vec<u8> {
+    //     let ret = format!("+{s}\r\n");
+    //     ret.as_bytes().into()
+    // }
+    pub fn get_simple_str(&self, s: &str) -> String {
+        format!("+{s}\r\n")
+        //ret.as_bytes().into()
     }
 
     // pub fn decode_rdb(&self, received_rdb: Vec<u8>) {

@@ -21,22 +21,34 @@ pub fn get_all_stream_names(lines: &[String]) -> Vec<(String, String)> {
     use_vec
 }
 
-pub fn get_xread_resp_array(v: &Vec<(String, Vec<(String, RedisEntry)>)>) -> Vec<u8> {
+//pub fn get_xread_resp_array(v: &Vec<(String, Vec<(String, RedisEntry)>)>) -> Vec<u8> {
+pub fn get_xread_resp_array(v: &Vec<(String, Vec<(String, RedisEntry)>)>) -> String {
     if v.is_empty() {
         eprintln!("getting resp arr for empty");
         return crate::RESP_NULL.into();
     }
 
     //let mut resp = b"*1\r\n".to_vec();
-    let mut resp: Vec<u8> = format!("*{}\r\n", v.len()).as_bytes().into();
+    // let mut resp: Vec<u8> = format!("*{}\r\n", v.len()).as_bytes().into();
+    // for (stream_name, id_entry) in v {
+    //     resp.extend(b"*2\r\n");
+    //     resp.extend(&get_bulk_string(stream_name));
+    //     resp.extend(b"*1\r\n");
+    //     id_entry.iter().for_each(|(entry_id, ent)| {
+    //         resp.extend(b"*2\r\n");
+    //         resp.extend(get_bulk_string(&entry_id));
+    //         resp.extend(ent.entry_resp_array());
+    //     });
+    // }
+    let mut resp = format!("*{}\r\n", v.len());
     for (stream_name, id_entry) in v {
-        resp.extend(b"*2\r\n");
-        resp.extend(&get_bulk_string(stream_name));
-        resp.extend(b"*1\r\n");
+        resp.push_str("*2\r\n");
+        resp.push_str(&get_bulk_string(stream_name));
+        resp.push_str("*1\r\n");
         id_entry.iter().for_each(|(entry_id, ent)| {
-            resp.extend(b"*2\r\n");
-            resp.extend(get_bulk_string(&entry_id));
-            resp.extend(ent.entry_resp_array());
+            resp.push_str("*2\r\n");
+            resp.push_str(&get_bulk_string(&entry_id));
+            resp.push_str(&ent.entry_resp_array());
         });
     }
     resp
