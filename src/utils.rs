@@ -30,6 +30,9 @@ pub fn get_bulk_string(res: &str) -> Vec<u8> {
     .concat()
 }
 
+pub fn get_redis_int(n: i32) -> Vec<u8> {
+    format!(":{n}\r\n").as_bytes().into()
+}
 pub fn random_id_gen() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                             abcdefghijklmnopqrstuvwxyz\

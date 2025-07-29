@@ -29,7 +29,7 @@ use threadpool::ThreadPool;
 
 use crate::entry_stream::{RedisEntry, RedisEntryStream};
 use crate::entry_utils::{get_all_stream_names, get_xread_resp_array};
-use crate::utils::{get_bulk_string, get_port, handle_set};
+use crate::utils::{get_bulk_string, get_port, get_redis_int, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
 
@@ -878,6 +878,21 @@ fn handle_client(
                         "command" => {
                             eprintln!("INITIATION, no command");
                             return Ok(());
+                        }
+
+                        "incr" => {
+                            let mut lk = new_db.lock().unwrap();
+                            let key = &all_lines[1];
+                            match lk.data.get_mut(key) {
+                                Some(rv) => {
+                                    if let Ok(val) = rv.value.parse::<i32>() {
+                                        let new_val = val + 1;
+                                        rv.value = new_val.to_string();
+                                        conn.write_to_stream(&get_redis_int(new_val));
+                                    }
+                                }
+                                None => {}
+                            }
                         }
 
                         _unrecognized_cmd => {
