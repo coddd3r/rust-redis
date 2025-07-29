@@ -999,7 +999,7 @@ fn handle_client(
                                 Some(use_list) => {
                                     if num_to_remove == 1 {
                                         response_to_write =
-                                            get_bulk_string(&use_list.values.remove(1));
+                                            get_bulk_string(&use_list.values.remove(0));
                                     } else {
                                         let mut use_nums = Vec::new();
                                         for _ in 0..num_to_remove {
