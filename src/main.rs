@@ -283,12 +283,23 @@ fn handle_client(
                 //eprintln!("current broadcast info:{:?}", broadcast_info);
 
                 let mut response_to_write = String::new();
-                let exec_present = commands.iter().flatten().any(|s| s == "EXEC");
-                if conn.multi_waiting && !exec_present {
-                    all_multi_commands.extend(commands);
-                    //commands = Vec::new()
-                    conn.write_to_stream(QUEUED_RESP.as_bytes());
-                    continue;
+                let mut exec_present = false;
+                let mut discard_present = false;
+                let mut discard_index: usize = 0;
+                commands.iter().flatten().enumerate().for_each(|(i, s)| {
+                    exec_present = s == "EXEC";
+                    if s == "DISCARD" {
+                        discard_index = i;
+                        discard_present = true;
+                    }
+                });
+
+                if conn.multi_waiting && discard_present {
+                    conn.multi_waiting = false;
+                    commands = commands[discard_index + 1..].to_vec();
+                    all_multi_commands = Vec::new();
+                    conn.write_to_stream(RESP_OK.as_bytes());
+                    //DO NOT continue in case some commands read from buffer after discard
                 } else if conn.multi_waiting && exec_present {
                     all_multi_commands.extend(commands);
                     commands = all_multi_commands;
@@ -297,6 +308,10 @@ fn handle_client(
                     eprintln!("\n\nEXEC MODE\n\n");
                     eprintln!("exec commands:{:?}", commands);
                     conn.multi_waiting = false;
+                } else if conn.multi_waiting {
+                    all_multi_commands.extend(commands);
+                    conn.write_to_stream(QUEUED_RESP.as_bytes());
+                    continue;
                 }
 
                 for all_lines in commands {
@@ -884,6 +899,9 @@ fn handle_client(
                             } else {
                                 response_to_write = EXEC_WITHOUT_MULTI.to_string();
                             }
+                        }
+                        "discard" => {
+                            conn.write_to_stream(b"-ERR DISCARD without MULTI\r\n");
                         }
 
                         _unrecognized_cmd => {
