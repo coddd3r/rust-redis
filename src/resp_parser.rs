@@ -90,10 +90,10 @@ impl RespConnection {
                 return Ok(None);
             }
             Ok(n) => {
-                //eprintln!(
-                //    "Found {n} bytes, {:?}",
-                //    String::from_utf8(temp_buf[..n].into())
-                //);
+                eprintln!(
+                    "Found {n} bytes, {:?}",
+                    String::from_utf8(temp_buf[..n].into())
+                );
                 //if !self.is_master {
                 self.prev_offset = self.offset + 0;
                 self.offset += n;
@@ -115,30 +115,26 @@ impl RespConnection {
     }
 
     fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        //eprintln!(
-        //    "\n\n START: handling buffer starting at pos:{}, num bytes read:{number_of_bytes_read}\n\n",
-        //    self.position
-        //);
-        //eprintln!(
-        //    "buffer as str:{:?}",
-        //    String::from_utf8_lossy(&self.buffer[self.position..])
-        //);
+        eprintln!(
+            "buffer as str:{:?}",
+            String::from_utf8_lossy(&self.buffer[self.position..])
+        );
         let mut commands = Vec::new();
 
         loop {
-            //eprintln!(
-            //    "\n\n LOOP: handling buffer starting at pos:{}\n\n",
-            //    self.position
-            //);
-            //eprintln!(
-            //    "buffer as str:{:?}",
-            //    String::from_utf8_lossy(&self.buffer[self.position..])
-            //);
+            eprintln!(
+                "\n\n LOOP: handling buffer starting at pos:{}\n\n",
+                self.position
+            );
+            eprintln!(
+                "buffer as str:{:?}",
+                String::from_utf8_lossy(&self.buffer[self.position..])
+            );
             let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
 
             while let Some(line) = lines.next() {
                 if line.is_empty() {
-                    ////eprintln!("empty_line");
+                    eprintln!("empty_line:{:?}", line);
                     continue;
                 }
                 self.position += line.len() + 1;
@@ -175,7 +171,9 @@ impl RespConnection {
                                     break;
                                 }
                             };
-                            self.position += line.len() + 1;
+
+                            //NOTE: might need to add + 1 for \n
+                            self.position += line.len();
 
                             if !size_line.starts_with('$') {
                                 valid = false;
@@ -273,18 +271,18 @@ impl RespConnection {
             }
 
             if (self.buffer.len() as i32) - (self.position as i32) <= 1 {
-                //eprintln!(
-                //    "breaking with length:{}, curr pos:{}",
-                //    self.buffer.len(),
-                //    self.position
-                //);
+                eprintln!(
+                    "breaking with length:{}, curr pos:{}",
+                    self.buffer.len(),
+                    self.position
+                );
                 break;
             } else {
-                //eprintln!(
-                //    "LOOPING AGAIN len:{}, pos:{}",
-                //    self.buffer.len(),
-                //    self.position
-                //);
+                eprintln!(
+                    "LOOPING AGAIN len:{}, pos:{}",
+                    self.buffer.len(),
+                    self.position
+                );
             }
         }
         //eprintln!(
@@ -298,15 +296,11 @@ impl RespConnection {
     }
 
     pub fn broadcast_command(&mut self, command: &[String]) {
-        //eprintln!("got signal to propagate to stream:{:?}", self.stream);
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
         let resp = self.format_resp_array(&s);
-        // let mut stream = self.stream.lock().unwrap();
-        //stream.write_all(&resp)
         self.write_to_stream(resp.as_bytes());
     }
 
-    //pub fn format_resp_array(&self, elements: &[&str]) -> Vec<u8> {
     pub fn format_resp_array(&self, elements: &[&str]) -> String {
         let mut resp = format!("*{}\r\n", elements.len()); //.into_bytes();
         for element in elements {

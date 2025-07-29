@@ -32,7 +32,7 @@ use threadpool::ThreadPool;
 use crate::entry_stream::{RedisEntry, RedisEntryStream};
 use crate::entry_utils::{get_all_stream_names, get_xread_resp_array};
 use crate::redis_list::RedisList;
-use crate::utils::{get_bulk_string, get_port, get_redis_int, handle_set};
+use crate::utils::{get_bulk_string, get_port, get_redis_int, get_resp_from_string, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
 
@@ -983,12 +983,31 @@ fn handle_client(
                         }
 
                         "lpop" => {
+                            eprintln!("in lpop");
                             let key = &all_lines[1];
+                            let num_to_remove = {
+                                if all_lines.len() > 2 {
+                                    all_lines[2].parse().unwrap()
+                                } else {
+                                    1
+                                }
+                            };
+
                             let mut lk = lists_map.lock().unwrap();
                             let search_opt = lk.get_mut(key);
                             match search_opt {
                                 Some(use_list) => {
-                                    response_to_write = get_bulk_string(&use_list.values.remove(0));
+                                    if num_to_remove == 1 {
+                                        response_to_write =
+                                            get_bulk_string(&use_list.values.remove(1));
+                                    } else {
+                                        let mut use_nums = Vec::new();
+                                        for _ in 0..num_to_remove {
+                                            use_nums.push(use_list.values.remove(0));
+                                        }
+                                        response_to_write =
+                                            get_resp_from_string(use_nums.as_slice());
+                                    }
                                 }
                                 None => response_to_write = RESP_NULL.to_string(),
                             }

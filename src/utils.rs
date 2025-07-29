@@ -54,6 +54,15 @@ pub fn random_id_gen() -> String {
     id
 }
 
+pub fn get_resp_from_string(elements: &[String]) -> String {
+    let mut resp = format!("*{}\r\n", elements.len()); //.into_bytes();
+    for element in elements {
+        //resp.extend(format!("${}\r\n{}\r\n", element.len(), element).into_bytes());
+        resp.push_str(&format!("${}\r\n{}\r\n", element.len(), element));
+    }
+    resp
+}
+
 pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     ////eprintln!("Successful rdb read");
     let mut ret_keys = Vec::new();
