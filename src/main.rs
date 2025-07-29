@@ -915,6 +915,16 @@ fn handle_client(
                             response_to_write = get_redis_int(use_list.values.len() as i32);
                         }
 
+                        "lpush" => {
+                            let key = &all_lines[1];
+                            let mut lk = lists_map.lock().unwrap();
+                            let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+                            all_lines[2..].iter().for_each(|e| {
+                                use_list.values.splice(0..0, [e.clone()]);
+                            });
+                            response_to_write = get_redis_int(use_list.values.len() as i32);
+                        }
+
                         "lrange" => {
                             let key = &all_lines[1];
                             let mut start = all_lines[2].parse::<i32>().unwrap();
@@ -926,10 +936,10 @@ fn handle_client(
                                 Some(use_list) => {
                                     let list_size = use_list.values.len() as i32;
                                     if start < 0 {
-                                        start = list_size - start;
+                                        start = list_size + start;
                                     }
                                     if end < 0 {
-                                        end = list_size - end;
+                                        end = list_size + end;
                                     }
                                     if start >= list_size || start > end || start < 0 || end < 0 {
                                         response_to_write = EMPTY_ARRAY.to_string();
@@ -939,6 +949,7 @@ fn handle_client(
                                         }
                                         let start = start as usize;
                                         let end = end as usize;
+                                        eprintln!("lrange with start:{start}, end:{end}");
                                         response_to_write = conn.format_resp_array(
                                             use_list.values[start..end + 1]
                                                 .iter()
