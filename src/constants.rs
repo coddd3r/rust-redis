@@ -45,3 +45,4 @@ pub const NONE_TYPE: &str = "+none\r\n";
 pub const ZERO_ERROR: &str = "-ERR The ID specified in XADD must be greater than 0-0\r\n";
 pub const SMALLER_ERROR: &str =
     "-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
+pub const EMPTY_ARRAY: &str = "*0\r\n";

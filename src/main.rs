@@ -22,6 +22,7 @@ use codecrafters_redis::{
 mod constants;
 mod entry_stream;
 mod entry_utils;
+mod redis_list;
 mod resp_parser;
 mod threadpool;
 mod utils;
@@ -30,6 +31,7 @@ use threadpool::ThreadPool;
 
 use crate::entry_stream::{RedisEntry, RedisEntryStream};
 use crate::entry_utils::{get_all_stream_names, get_xread_resp_array};
+use crate::redis_list::RedisList;
 use crate::utils::{get_bulk_string, get_port, get_redis_int, handle_set};
 
 use crate::resp_parser::{BroadCastInfo, RespConnection};
@@ -55,11 +57,12 @@ fn main() {
     let mut master_port: Option<String> = None;
     //let mut master_conn: Option<TcpStream> = None;
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(BroadCastInfo::new()));
-    let new_db = RedisDatabase::new();
-
-    let mut new_db = Arc::new(Mutex::new(new_db));
+    let mut new_db = Arc::new(Mutex::new(RedisDatabase::new()));
     let streams_db: HashMap<String, RedisEntryStream> = HashMap::new();
     let streams_db = Arc::new(Mutex::new(streams_db));
+
+    let lists_map: HashMap<String, RedisList> = HashMap::new();
+    let lists_map = Arc::new(Mutex::new(lists_map));
 
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
@@ -123,6 +126,7 @@ fn main() {
                                 //let use_stream = Arc::clone(&s);
                                 let use_stream = conn.try_clone().unwrap();
                                 let st_db = Arc::clone(&streams_db);
+                                let list_map = Arc::clone(&lists_map);
                                 stream_pool.execute(move || {
                                     let res = handle_client(
                                         use_stream,
@@ -134,6 +138,7 @@ fn main() {
                                         &m_port,
                                         use_db,
                                         st_db,
+                                        list_map,
                                     );
                                     match res {
                                         Ok(_) => {}
@@ -187,6 +192,7 @@ fn main() {
 
                 let short_port = short_port.clone();
                 let st_db = Arc::clone(&streams_db);
+                let list_map = Arc::clone(&lists_map);
                 stream_pool.execute(move || {
                     let res = handle_client(
                         s,
@@ -198,6 +204,7 @@ fn main() {
                         &m_port,
                         use_db,
                         st_db,
+                        list_map,
                     );
                     match res {
                         Ok(_) => {}
@@ -226,6 +233,7 @@ fn handle_client(
     master_port: &Option<String>,
     new_db: Arc<Mutex<RedisDatabase>>,
     entry_streams: Arc<Mutex<HashMap<String, RedisEntryStream>>>,
+    lists_map: Arc<Mutex<HashMap<String, RedisList>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -902,6 +910,55 @@ fn handle_client(
                         }
                         "discard" => {
                             conn.write_to_stream(b"-ERR DISCARD without MULTI\r\n");
+                        }
+
+                        "rpush" => {
+                            let key = &all_lines[1];
+                            let mut lk = lists_map.lock().unwrap();
+                            let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+                            all_lines[2..].iter().for_each(|e| {
+                                use_list.values.push(e.clone());
+                            });
+                            response_to_write = get_redis_int(use_list.values.len() as i32);
+                        }
+
+                        "lrange" => {
+                            let key = &all_lines[1];
+                            let mut start = all_lines[2].parse::<i32>().unwrap();
+                            let mut end = all_lines[3].parse::<i32>().unwrap();
+
+                            let lk = lists_map.lock().unwrap();
+                            let search_opt = lk.get(key);
+                            match search_opt {
+                                Some(use_list) => {
+                                    let list_size = use_list.values.len() as i32;
+                                    if start < 0 {
+                                        start = list_size - start;
+                                    }
+                                    if end < 0 {
+                                        end = list_size - end;
+                                    }
+                                    if start >= list_size || start > end || start < 0 || end < 0 {
+                                        response_to_write = EMPTY_ARRAY.to_string();
+                                    } else {
+                                        if end >= list_size {
+                                            end = list_size - 1;
+                                        }
+                                        let start = start as usize;
+                                        let end = end as usize;
+                                        response_to_write = conn.format_resp_array(
+                                            use_list.values[start..end + 1]
+                                                .iter()
+                                                .map(|e| e.as_str())
+                                                .collect::<Vec<&str>>()
+                                                .as_slice(),
+                                        )
+                                    }
+                                }
+                                None => {
+                                    response_to_write = EMPTY_ARRAY.to_string();
+                                }
+                            }
                         }
 
                         _unrecognized_cmd => {
