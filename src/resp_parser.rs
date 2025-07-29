@@ -83,7 +83,6 @@ impl RespConnection {
 
         ////eprintln!("stream in read");
         let mut temp_buf = [0; 4096];
-        let buf_size_before = self.buffer.len();
 
         match self.stream.read(&mut temp_buf) {
             Ok(0) => {
@@ -112,13 +111,10 @@ impl RespConnection {
         //eprintln!("AFTER stream in read");
 
         // Parse complete commands from buffer
-        self.parse_buffer(self.buffer.len() - buf_size_before)
+        self.parse_buffer()
     }
 
-    fn parse_buffer(
-        &mut self,
-        number_of_bytes_read: usize,
-    ) -> std::io::Result<Option<Vec<Vec<String>>>> {
+    fn parse_buffer(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         //eprintln!(
         //    "\n\n START: handling buffer starting at pos:{}, num bytes read:{number_of_bytes_read}\n\n",
         //    self.position

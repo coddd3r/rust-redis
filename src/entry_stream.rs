@@ -210,7 +210,7 @@ impl RedisEntryStream {
 
         //eprintln!("using start:{start_time}, end:{end_id}");
         match self.entries.get(start_time) {
-            Some(ent) => {
+            Some(_ent) => {
                 //eprintln!("got a start entry:{:?}", ent);
                 let mut curr_id = Some(start_time);
                 loop {
@@ -311,7 +311,7 @@ impl RedisEntryStream {
 
         //eprintln!("using start:{start_id}");
         match self.entries.get(&start_id) {
-            Some(ent) => {
+            Some(_ent) => {
                 //eprintln!("got a start entry:{:?}", ent);
                 let mut curr_id = Some(&start_id);
                 loop {
@@ -413,7 +413,7 @@ impl RedisEntryStream {
         }
 
         match self.entries.get(block_start.as_ref().unwrap()) {
-            Some(ent) => {
+            Some(_ent) => {
                 //eprintln!("got a start entry:{:?}", ent);
                 let mut curr_id = block_start;
                 loop {

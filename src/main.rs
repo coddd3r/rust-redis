@@ -936,11 +936,17 @@ fn handle_client(
                                 Some(use_list) => {
                                     let list_size = use_list.values.len() as i32;
                                     if start < 0 {
-                                        start = list_size + start;
+                                        if list_size + start < 0 {
+                                            start = 0
+                                        } else {
+                                            start = list_size + start
+                                        };
                                     }
                                     if end < 0 {
                                         end = list_size + end;
                                     }
+                                    eprintln!("HANDLING lrange with start:{start}, end:{end}");
+
                                     if start >= list_size || start > end || start < 0 || end < 0 {
                                         response_to_write = EMPTY_ARRAY.to_string();
                                     } else {
@@ -949,7 +955,6 @@ fn handle_client(
                                         }
                                         let start = start as usize;
                                         let end = end as usize;
-                                        eprintln!("lrange with start:{start}, end:{end}");
                                         response_to_write = conn.format_resp_array(
                                             use_list.values[start..end + 1]
                                                 .iter()
