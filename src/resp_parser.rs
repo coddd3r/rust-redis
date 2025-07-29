@@ -248,7 +248,7 @@ impl RespConnection {
                         //    self.buffer.len()
                         //);
 
-                        let rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
+                        let _rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
                         //eprintln!(
                         //    "PARSED RDB IN STR:{:?}",
                         //    String::from_utf8_lossy(&rdb_bytes)

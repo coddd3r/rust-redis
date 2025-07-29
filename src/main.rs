@@ -143,7 +143,7 @@ fn main() {
                                     match res {
                                         Ok(_) => {}
                                         Err(e) => {
-                                            //eprintln!("Error handling Master {}", e);
+                                            eprintln!("Error handling Master {}", e);
                                         }
                                     }
                                 });
@@ -209,7 +209,7 @@ fn main() {
                     match res {
                         Ok(_) => {}
                         Err(e) => {
-                            //eprintln!("Error handling client {}", e);
+                            eprintln!("Error handling client {}", e);
                         }
                     }
                 });
@@ -249,13 +249,13 @@ fn handle_client(
         conn.is_master = true;
         eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]).as_bytes());
-        let res = conn.try_read_command();
+        let _res = conn.try_read_command();
         sleep(Duration::from_millis(10));
         //eprintln!("Read result: {:?}", res);
 
         let use_bytes = conn.format_resp_array(&[REPL_CONF, LISTENING_PORT, replica_port.unwrap()]);
         conn.write_to_stream(&use_bytes.as_bytes());
-        let res = conn.try_read_command();
+        let _res = conn.try_read_command();
         sleep(Duration::from_millis(10));
         //eprintln!("Read result: {:?}", res);
 
@@ -264,7 +264,7 @@ fn handle_client(
                 .format_resp_array(&[REPL_CONF, "capa", "psync2"])
                 .as_bytes(),
         );
-        let res = conn.try_read_command();
+        let _res = conn.try_read_command();
         sleep(Duration::from_millis(10));
         //eprintln!("Read result: {:?}", res);
 
@@ -970,6 +970,30 @@ fn handle_client(
                             }
                         }
 
+                        "llen" => {
+                            let key = &all_lines[1];
+                            let lk = lists_map.lock().unwrap();
+                            let search_opt = lk.get(key);
+                            match search_opt {
+                                Some(use_list) => {
+                                    response_to_write = get_redis_int(use_list.values.len() as i32);
+                                }
+                                None => response_to_write = EMPTY_ARRAY.to_string(),
+                            }
+                        }
+
+                        "lpop" => {
+                            let key = &all_lines[1];
+                            let mut lk = lists_map.lock().unwrap();
+                            let search_opt = lk.get_mut(key);
+                            match search_opt {
+                                Some(use_list) => {
+                                    response_to_write = get_bulk_string(&use_list.values.remove(0));
+                                }
+                                None => response_to_write = RESP_NULL.to_string(),
+                            }
+                        }
+
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",
@@ -990,7 +1014,7 @@ fn handle_client(
             }
             Ok(None) => {}
             Err(e) => {
-                //eprintln!("Connection error: {}", e);
+                eprintln!("Connection error: {}", e);
                 break;
             }
         }
