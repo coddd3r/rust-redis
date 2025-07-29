@@ -274,6 +274,8 @@ fn handle_client(
 
     let mut waiting_until = SystemTime::now();
     let mut all_multi_commands = Vec::new();
+    let mut is_exec_mode = false;
+    let mut hold_all_exec_reponse: Vec<String> = Vec::new();
     loop {
         match conn.try_read_command() {
             Ok(Some(mut commands)) => {
@@ -281,17 +283,20 @@ fn handle_client(
                 //eprintln!("current broadcast info:{:?}", broadcast_info);
 
                 let mut response_to_write = String::new();
-                let mut is_exec_mode = false;
-                let mut hold_all_exec_reponse = Vec::new();
                 let exec_present = commands.iter().flatten().any(|s| s == "EXEC");
                 if conn.multi_waiting && !exec_present {
                     all_multi_commands.extend(commands);
+                    //commands = Vec::new()
                     conn.write_to_stream(QUEUED_RESP.as_bytes());
                     continue;
                 } else if conn.multi_waiting && exec_present {
+                    all_multi_commands.extend(commands);
                     commands = all_multi_commands;
-                    is_exec_mode = true;
                     all_multi_commands = Vec::new();
+                    is_exec_mode = true;
+                    eprintln!("\n\nEXEC MODE\n\n");
+                    eprintln!("exec commands:{:?}", commands);
+                    conn.multi_waiting = false;
                 }
 
                 for all_lines in commands {
@@ -306,7 +311,6 @@ fn handle_client(
                     match cmd.as_str() {
                         "ping" => {
                             if !sent_by_main {
-                                //conn.write_to_stream(b"+PONG\r\n");
                                 response_to_write = PONG_RESPONSE.to_string();
                             }
                             eprintln!(
@@ -318,7 +322,6 @@ fn handle_client(
                             //let resp = [b"+", all_lines[1].as_bytes(), b"\r\n"].concat();
                             let resp = format!("+{}\r\n", all_lines[1]);
                             response_to_write = resp.to_string()
-                            //conn.write_to_stream(&resp);
                         }
 
                         "set" => {
@@ -329,7 +332,6 @@ fn handle_client(
 
                             if all_lines.len() < 3 {
                                 response_to_write = RESP_NULL.to_string();
-                                //conn.write_to_stream(RESP_NULL);
                                 continue;
                             }
 
@@ -355,7 +357,6 @@ fn handle_client(
                             if r.is_ok() && !sent_by_main {
                                 eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 response_to_write = RESP_OK.to_string()
-                                //conn.write_to_stream(RESP_OK);
                             }
                         }
 
@@ -365,7 +366,6 @@ fn handle_client(
                         "get" => {
                             if all_lines.len() < 2 {
                                 response_to_write = RESP_NULL.to_string();
-                                //conn.write_to_stream(RESP_NULL);
                                 continue;
                             }
                             eprintln!("IN handle client GET, db:{:?}", new_db);
@@ -381,15 +381,12 @@ fn handle_client(
                                         //eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
                                         lk.data.remove(get_key);
                                         response_to_write = RESP_NULL.to_string();
-                                        //conn.write_to_stream(crate::RESP_NULL);
                                     } else {
                                         let resp = crate::utils::get_bulk_string(&res.value);
-                                        //conn.write_to_stream(&resp);
                                         response_to_write = resp;
                                     }
                                 } else {
                                     //eprintln!("IN GET FOUND NONE");
-                                    //conn.write_to_stream(crate::RESP_NULL);
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -407,28 +404,17 @@ fn handle_client(
                                 "get" => match config_field.as_str() {
                                     "dir" => {
                                         if let Some(dir_name) = &dir {
-                                            //conn.write_to_stream(
-                                            //     &conn.format_resp_array(&[&config_field, dir_name]),
-                                            //);
                                             response_to_write =
                                                 conn.format_resp_array(&[&config_field, dir_name])
-
-                                            //stream.write_all(&resp).unwrap();
                                         } else {
-                                            //stream.write_all(crate::RESP_NULL)?;
-                                            //conn.write_to_stream(crate::RESP_NULL);
                                             response_to_write = RESP_NULL.to_string();
                                         }
                                     }
                                     "dbfilename" => {
                                         if let Some(db_name) = &db_filename {
-                                            // conn.write_to_stream(
-                                            //     &conn.format_resp_array(&[&config_field, &db_name]),
-                                            // );
                                             response_to_write =
                                                 conn.format_resp_array(&[&config_field, &db_name])
                                         } else {
-                                            //conn.write_to_stream(crate::RESP_NULL);
                                             response_to_write = RESP_NULL.to_string();
                                         }
                                     }
@@ -470,10 +456,6 @@ fn handle_client(
                                     let ret_keys = utils::read_rdb_keys(rdb, all_lines[1].clone());
 
                                     //EXAMPLE: *1\r\n$3\r\nfoo\r\n
-                                    // let _ = conn.write_to_stream(
-                                    //     &[b"*", ret_keys.len().to_string().as_bytes(), b"\r\n"]
-                                    //         .concat(),
-                                    // );
                                     response_to_write = conn.format_resp_array(
                                         ret_keys
                                             .iter()
@@ -481,13 +463,9 @@ fn handle_client(
                                             .collect::<Vec<&str>>()
                                             .as_slice(),
                                     )
-                                    // ret_keys.iter().enumerate().for_each(|(_, e)| {
-                                    //     let _ = conn.write_to_stream(&utils::get_bulk_string(e));
-                                    // });
                                 }
                                 Err(_e) => {
                                     //eprintln!("failed to read from rdb file {:?}", e);
-                                    //conn.write_to_stream(RESP_NULL);
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -521,14 +499,12 @@ fn handle_client(
                                 let _ = write_rdb_file(path, &new_rdb);
 
                                 eprintln!("after SAVE writing to file");
-                                //conn.write_to_stream(RESP_OK);
                                 response_to_write = RESP_OK.to_string();
                             } else {
                                 eprintln!("Creating DUMMY in curr dir");
                                 path = env::current_dir().unwrap();
                                 path.push("dump.rdb");
                                 //print_hex::create_dummy_rdb(&path)?;
-                                //conn.write_to_stream(RESP_OK);
                                 response_to_write = RESP_OK.to_string();
                                 // no need for data as it already mocked
                             }
@@ -556,7 +532,6 @@ fn handle_client(
                                     _ => {}
                                 }
                                 eprintln!("INFO RESPONSE:{:?}", use_resp);
-                                //conn.write_to_stream(&utils::get_bulk_string(&use_resp));
                                 response_to_write = get_bulk_string(&use_resp);
                             } else {
                                 eprintln!("IN INFO ELSE");
@@ -570,7 +545,6 @@ fn handle_client(
                                     utils::get_bulk_string(&use_val[..use_val.len() - 2]);
                                 //eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
                                 eprintln!("RESPONSE:{:?}", &info_res);
-                                //conn.write_to_stream(&info_res);
                                 response_to_write = info_res;
                             }
                             eprintln!("AFTER INFO SECTION");
@@ -601,7 +575,6 @@ fn handle_client(
                                         lk.ports.push(all_lines[2].clone());
                                     }
                                     eprintln!("after repl pushing ports:{:?}", broadcast_info);
-                                    //conn.write_to_stream(RESP_OK);
                                     response_to_write = RESP_OK.to_string();
                                 }
 
@@ -615,7 +588,6 @@ fn handle_client(
                                 }
 
                                 _ => {
-                                    //conn.write_to_stream(RESP_OK);
                                     response_to_write = RESP_OK.to_string();
                                     eprintln!("WROTE ok to other replconf");
                                 }
@@ -741,7 +713,6 @@ fn handle_client(
 
                                 eprintln!("after threads");
                             } else {
-                                //conn.write_to_stream(format!(":{}\r\n", num_repls).as_bytes());
                                 response_to_write = format!(":{}\r\n", num_repls);
                             }
                         }
@@ -755,7 +726,6 @@ fn handle_client(
 
                             {
                                 if new_db.lock().unwrap().get(key).is_some() {
-                                    //conn.write_to_stream(STRING);
                                     response_to_write = STRING.to_string();
                                     continue;
                                 }
@@ -763,12 +733,10 @@ fn handle_client(
 
                             {
                                 if entry_streams.lock().unwrap().get(key).is_some() {
-                                    //conn.write_to_stream(&conn.get_simple_str("stream"));
                                     response_to_write = conn.get_simple_str("stream");
                                     continue;
                                 }
                             }
-                            //conn.write_to_stream(NONE_TYPE);
                             response_to_write = NONE_TYPE.to_string();
                         }
 
@@ -793,7 +761,6 @@ fn handle_client(
 
                             let res = curr_stream.handle_add(&stream_id.as_str(), use_vec);
 
-                            //conn.write_to_stream(&res);
                             response_to_write = res;
                         }
 
@@ -870,7 +837,6 @@ fn handle_client(
                                             curr_stream.xread_range(&stream_name, &start)
                                         }
                                     };
-                                    //conn.write_to_stream(&res);
                                     if res.is_some() {
                                         final_res.push(res.unwrap())
                                     }
@@ -878,13 +844,8 @@ fn handle_client(
                             }
 
                             let full_stream_bytes = get_xread_resp_array(&final_res);
-                            eprintln!(
-                                "FINAL xread res:{:?}",
-                                //String::from_utf8_lossy(&full_stream_bytes)
-                                full_stream_bytes
-                            );
+                            eprintln!("FINAL xread res:{:?}", full_stream_bytes);
                             if !full_block {
-                                //conn.write_to_stream(&full_stream_bytes);
                                 response_to_write = full_stream_bytes;
                             }
                         }
@@ -906,25 +867,29 @@ fn handle_client(
                             if let Ok(val) = rv.value.parse::<i32>() {
                                 let new_val = val + 1;
                                 rv.value = new_val.to_string();
-                                //conn.write_to_stream(&get_redis_int(new_val));
                                 response_to_write = get_redis_int(new_val);
                             } else {
-                                //conn.write_to_stream(NOT_INT_ERROR);
                                 response_to_write = NOT_INT_ERROR.to_string();
                             }
                         }
 
                         "multi" => {
                             conn.multi_waiting = true;
-                            //conn.write_to_stream(RESP_OK);
-                            response_to_write = RESP_OK.to_string();
+                            conn.write_to_stream(RESP_OK.as_bytes());
+                            continue;
                         }
 
                         "exec" => {
-                            if conn.multi_waiting {
+                            if is_exec_mode {
                                 conn.multi_waiting = false;
+                                is_exec_mode = false;
+                                let mut exec_resp = format!("*{}\r\n", hold_all_exec_reponse.len());
+                                hold_all_exec_reponse
+                                    .iter()
+                                    .for_each(|e| exec_resp.push_str(&e));
+                                conn.write_to_stream(exec_resp.as_bytes());
+                                hold_all_exec_reponse = Vec::new();
                             } else {
-                                //conn.write_to_stream(EXEC_WITHOUT_MULTI);
                                 response_to_write = EXEC_WITHOUT_MULTI.to_string();
                             }
                         }
@@ -935,12 +900,16 @@ fn handle_client(
                             )))
                         }
                     }
-                }
-                if is_exec_mode {
-                    hold_all_exec_reponse.push(response_to_write);
-                    continue;
-                } else if !response_to_write.is_empty() {
-                    conn.write_to_stream(response_to_write.as_bytes());
+                    /*
+                     * HANDLE COMMAND RESPONSES
+                     */
+                    if is_exec_mode {
+                        hold_all_exec_reponse.push(response_to_write.clone());
+                        eprintln!("EXEC MODE!! with resps:{:?}", hold_all_exec_reponse);
+                        continue;
+                    } else if !response_to_write.is_empty() {
+                        conn.write_to_stream(response_to_write.as_bytes());
+                    }
                 }
             }
             Ok(None) => {}
