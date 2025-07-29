@@ -242,18 +242,12 @@ fn handle_client(
     );
 
     let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    //eprintln!(
-    //     "IS MASTER?{:?}, master_port:{:?}",
-    //     master_port.is_some(),
-    //     master_port
-    // );
 
-    //let mut conn = RespConnection::new(Arc::clone(&stream));
     let mut conn = RespConnection::new(stream.try_clone().unwrap());
 
     if sent_by_main {
         conn.is_master = true;
-        //eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
+        eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]).as_bytes());
         let res = conn.try_read_command();
         sleep(Duration::from_millis(10));
@@ -900,8 +894,10 @@ fn handle_client(
                                 hold_all_exec_reponse
                                     .iter()
                                     .for_each(|e| exec_resp.push_str(&e));
-                                conn.write_to_stream(exec_resp.as_bytes());
+                                //conn.write_to_stream(exec_resp.as_bytes());
+                                response_to_write = exec_resp;
                                 hold_all_exec_reponse = Vec::new();
+                                continue;
                             } else {
                                 response_to_write = EXEC_WITHOUT_MULTI.to_string();
                             }
