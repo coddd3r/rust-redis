@@ -46,6 +46,8 @@ const PSYNC: &str = "PSYNC";
 const FULLRESYNC: &str = "FULLRESYNC";
 const DEFAULT_PORT: &str = "6379";
 const NOT_INT_ERROR: &[u8; 46] = b"-ERR value is not an integer or out of range\r\n";
+const EXEC_WITHOUT_MULTI: &[u8; 25] = b"-ERR EXEC without MULTI\r\n";
+const QUEUED_RESP: &[u8; 9] = b"+QUEUED\r\n";
 
 const RESP_OK: &[u8; 5] = b"+OK\r\n";
 const RESP_NULL: &[u8; 5] = b"$-1\r\n";
@@ -285,11 +287,24 @@ fn handle_client(
     let mut write_command: Vec<_> = Vec::new();
 
     let mut waiting_until = SystemTime::now();
+    let mut all_multi_commands = Vec::new();
     loop {
         match conn.try_read_command() {
-            Ok(Some(commands)) => {
+            Ok(Some(mut commands)) => {
                 //eprintln!("ALL COMMANDS:{:?}", commands);
                 //eprintln!("current broadcast info:{:?}", broadcast_info);
+
+                //let mut use_commands = Vec::new();
+                let exec_present = commands.iter().flatten().any(|s| s == "EXEC");
+                if conn.multi_waiting && !exec_present {
+                    all_multi_commands.extend(commands);
+                    conn.write_to_stream(QUEUED_RESP);
+                    continue;
+                } else if conn.multi_waiting && !exec_present {
+                    commands = all_multi_commands;
+                    all_multi_commands = Vec::new();
+                }
+
                 for all_lines in commands {
                     if all_lines.len() < 1 {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
@@ -748,40 +763,6 @@ fn handle_client(
 
                             let res = curr_stream.handle_add(&stream_id.as_str(), use_vec);
 
-                            //let res = curr_stream.stream_id_response(&stream_id);
-                            // if res.0 {
-                            //     let mut use_vec = Vec::new();
-                            //     // map key values to each other in a tuple
-                            //     for i in 3..all_lines.len() {
-                            //         if i % 2 == 0 {
-                            //             continue;
-                            //         }
-                            //         use_vec.push((all_lines[i].clone(), all_lines[i + 1].clone()))
-                            //     }
-
-                            //     let prev_sequence_id = &curr_stream.last_sequence_id;
-                            //     let use_entry = RedisEntry::new(use_vec, prev_sequence_id.clone());
-                            //     //let use_entry_id = String::from_utf8(res.1.clone()).unwrap();
-                            //     match prev_sequence_id {
-                            //         Some(p_id) => {
-                            //             eprintln!("USING EXISTING SEQ ID");
-                            //             let prev_entry = curr_stream.entries.get_mut(p_id).unwrap();
-                            //             prev_entry.next_sequence_id = Some(stream_id.clone());
-                            //             curr_stream.last_sequence_id = Some(stream_id.clone());
-                            //             eprintln!("set prev entry:{:?}", prev_entry);
-                            //         }
-                            //         None => {
-                            //             eprintln!("ADDING NEW SEQ ID");
-                            //             curr_stream.first_sequence_id = Some(stream_id.clone());
-                            //             curr_stream.last_sequence_id = Some(stream_id.clone());
-                            //         }
-                            //     }
-
-                            //     eprintln!("creating entry with vec:{:?}", use_entry);
-                            //     curr_stream.entries.insert(stream_id, use_entry);
-
-                            //     eprintln!("succesful insert curr stream:{:?}", curr_stream);
-                            // }
                             conn.write_to_stream(&res);
                         }
 
@@ -884,13 +865,6 @@ fn handle_client(
                         "incr" => {
                             let mut lk = new_db.lock().unwrap();
                             let key = all_lines[1].clone();
-                            // let val = {
-                            //     if all_lines.len() > 2 {
-                            //         Some(&all_lines[2])
-                            //     } else {
-                            //         None
-                            //     }
-                            // };
 
                             let rv = lk.data.entry(key).or_insert(RedisValue {
                                 value: "0".to_string(),
@@ -904,12 +878,19 @@ fn handle_client(
                             } else {
                                 conn.write_to_stream(NOT_INT_ERROR);
                             }
+                        }
 
-                            // match  {
-                            //     Some(rv) => {
-                            //                                   //     }
-                            //     None => {}
-                            // }
+                        "multi" => {
+                            conn.multi_waiting = true;
+                            conn.write_to_stream(RESP_OK);
+                        }
+
+                        "exec" => {
+                            if conn.multi_waiting {
+                                conn.multi_waiting = false;
+                            } else {
+                                conn.write_to_stream(EXEC_WITHOUT_MULTI);
+                            }
                         }
 
                         _unrecognized_cmd => {

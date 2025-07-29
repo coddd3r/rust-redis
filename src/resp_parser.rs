@@ -60,6 +60,7 @@ pub struct RespConnection {
     pub offset: usize,
     pub prev_offset: usize,
     pub is_master: bool,
+    pub multi_waiting: bool,
 }
 
 impl RespConnection {
@@ -73,6 +74,7 @@ impl RespConnection {
             offset: 0,
             prev_offset: 0,
             is_master: false,
+            multi_waiting: false,
         }
     }
 
