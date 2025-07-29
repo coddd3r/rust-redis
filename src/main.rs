@@ -897,7 +897,6 @@ fn handle_client(
                                 //conn.write_to_stream(exec_resp.as_bytes());
                                 response_to_write = exec_resp;
                                 hold_all_exec_reponse = Vec::new();
-                                continue;
                             } else {
                                 response_to_write = EXEC_WITHOUT_MULTI.to_string();
                             }
