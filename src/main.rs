@@ -287,8 +287,8 @@ fn handle_client(
                 let mut discard_present = false;
                 let mut discard_index: usize = 0;
                 commands.iter().flatten().enumerate().for_each(|(i, s)| {
-                    exec_present = s == "EXEC";
-                    if s == "DISCARD" {
+                    exec_present = s.to_lowercase() == "exec";
+                    if s.to_uppercase() == "DISCARD" {
                         discard_index = i;
                         discard_present = true;
                     }
