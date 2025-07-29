@@ -978,7 +978,7 @@ fn handle_client(
                                 Some(use_list) => {
                                     response_to_write = get_redis_int(use_list.values.len() as i32);
                                 }
-                                None => response_to_write = EMPTY_ARRAY.to_string(),
+                                None => response_to_write = get_redis_int(0),
                             }
                         }
 
