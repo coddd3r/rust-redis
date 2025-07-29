@@ -79,7 +79,7 @@ pub fn read_size<R: Read>(reader: &mut R) -> Result<(usize, Option<Vec<u8>>)> {
     reader.read_exact(&mut buf)?;
     let first_byte = buf[0];
 
-    eprintln!("reading first byte for SIZE in hex {:#04X?}", buf[0]);
+    //eprintln!("reading first byte for SIZE in hex {:#04X?}", buf[0]);
     //read first byte by right shifting by 6
     match first_byte >> 6 {
         /* If the first two bits are 0b00:
@@ -156,7 +156,7 @@ pub fn read_string<R: Read>(reader: &mut R) -> Result<String> {
     }
     let mut buf = vec![0u8; size];
     reader.read_exact(&mut buf)?;
-    eprintln!("READ SIZE of a STRING, {size}");
+    //eprintln!("READ SIZE of a STRING, {size}");
     print!("STRING IN HEX:");
     print_hex(&buf);
     String::from_utf8(buf).map_err(|_| RdbError::InvalidStringEncoding)
@@ -170,7 +170,7 @@ pub fn write_string<W: Write>(writer: &mut W, s: &str) -> Result<()> {
 
 /// Reads a length-prefixed byte array
 //pub fn read_bytes<R: Read>(reader: &mut R) -> Result<Vec<u8>> {
-//    eprintln!("READING SIZE of a byte array");
+//    //eprintln!("READING SIZE of a byte array");
 //    let size = read_size(reader)?.0;
 //    let mut buf = vec![0u8; size];
 //    reader.read_exact(&mut buf)?;
@@ -182,13 +182,13 @@ pub fn read_special_int<R: Read>(reader: &mut R, v: Option<Vec<u8>>) -> Result<S
     // reader.read_exact(&mut buf)?;
 
     let use_vec = v.unwrap()[0];
-    eprintln!("reading special int:{:#04X?}", use_vec);
+    //eprintln!("reading special int:{:#04X?}", use_vec);
     match use_vec {
         0xC0 => {
             // 8-bit
             reader.read_exact(&mut buf)?;
             let ret = buf[0].to_string();
-            eprintln!("returning string from special int: {ret}");
+            //eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
         0xC1 => {
@@ -196,7 +196,7 @@ pub fn read_special_int<R: Read>(reader: &mut R, v: Option<Vec<u8>>) -> Result<S
             let mut bytes = [0u8; 2];
             reader.read_exact(&mut bytes)?;
             let ret = u16::from_le_bytes(bytes).to_string();
-            eprintln!("returning string from special int: {ret}");
+            //eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
         0xC2 => {
@@ -204,11 +204,11 @@ pub fn read_special_int<R: Read>(reader: &mut R, v: Option<Vec<u8>>) -> Result<S
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
             let ret = u32::from_le_bytes(bytes).to_string();
-            eprintln!("returning string from special int: {ret}");
+            //eprintln!("returning string from special int: {ret}");
             Ok(ret)
         }
         _ => {
-            eprintln!("FAILED special int, with buf:{:#04X?}", buf[0]);
+            //eprintln!("FAILED special int, with buf:{:#04X?}", buf[0]);
             Err(RdbError::InvalidStringEncoding)
         }
     }

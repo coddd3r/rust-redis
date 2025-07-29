@@ -81,7 +81,7 @@ impl RespConnection {
     pub fn try_read_command(&mut self) -> std::io::Result<Option<Vec<Vec<String>>>> {
         // Read available data
 
-        //eprintln!("stream in read");
+        ////eprintln!("stream in read");
         let mut temp_buf = [0; 4096];
         let buf_size_before = self.buffer.len();
 
@@ -91,10 +91,10 @@ impl RespConnection {
                 return Ok(None);
             }
             Ok(n) => {
-                eprintln!(
-                    "Found {n} bytes, {:?}",
-                    String::from_utf8(temp_buf[..n].into())
-                );
+                //eprintln!(
+                //    "Found {n} bytes, {:?}",
+                //    String::from_utf8(temp_buf[..n].into())
+                //);
                 //if !self.is_master {
                 self.prev_offset = self.offset + 0;
                 self.offset += n;
@@ -105,11 +105,11 @@ impl RespConnection {
                 return Ok(None);
             }
             Err(e) => {
-                eprintln!("BIG ERROR:{e}");
+                //eprintln!("BIG ERROR:{e}");
                 return Err(e);
             }
         }
-        eprintln!("AFTER stream in read");
+        //eprintln!("AFTER stream in read");
 
         // Parse complete commands from buffer
         self.parse_buffer(self.buffer.len() - buf_size_before)
@@ -119,30 +119,30 @@ impl RespConnection {
         &mut self,
         number_of_bytes_read: usize,
     ) -> std::io::Result<Option<Vec<Vec<String>>>> {
-        eprintln!(
-            "\n\n START: handling buffer starting at pos:{}, num bytes read:{number_of_bytes_read}\n\n",
-            self.position
-        );
-        eprintln!(
-            "buffer as str:{:?}",
-            String::from_utf8_lossy(&self.buffer[self.position..])
-        );
+        //eprintln!(
+        //    "\n\n START: handling buffer starting at pos:{}, num bytes read:{number_of_bytes_read}\n\n",
+        //    self.position
+        //);
+        //eprintln!(
+        //    "buffer as str:{:?}",
+        //    String::from_utf8_lossy(&self.buffer[self.position..])
+        //);
         let mut commands = Vec::new();
 
         loop {
-            eprintln!(
-                "\n\n LOOP: handling buffer starting at pos:{}\n\n",
-                self.position
-            );
-            eprintln!(
-                "buffer as str:{:?}",
-                String::from_utf8_lossy(&self.buffer[self.position..])
-            );
+            //eprintln!(
+            //    "\n\n LOOP: handling buffer starting at pos:{}\n\n",
+            //    self.position
+            //);
+            //eprintln!(
+            //    "buffer as str:{:?}",
+            //    String::from_utf8_lossy(&self.buffer[self.position..])
+            //);
             let mut lines = self.buffer[self.position..].split(|&b| b == b'\n');
 
             while let Some(line) = lines.next() {
                 if line.is_empty() {
-                    //eprintln!("empty_line");
+                    ////eprintln!("empty_line");
                     continue;
                 }
                 self.position += line.len() + 1;
@@ -213,10 +213,10 @@ impl RespConnection {
                             };
 
                             content = content.trim().to_string();
-                            //eprintln!("GOT content:{:?}", content);
+                            ////eprintln!("GOT content:{:?}", content);
                             //RESP ARRAY DECODED WRONG
                             if content.len() != size {
-                                //    eprintln!("breaking because content is not the same size");
+                                //    //eprintln!("breaking because content is not the same size");
                                 break;
                             }
 
@@ -225,16 +225,16 @@ impl RespConnection {
                         if valid && elements.len() == arr_length {
                             commands.push(elements);
                         }
-                        eprintln!(
-                            "end of resp section, buf len:{}, pos:{}",
-                            self.buffer.len(),
-                            self.position
-                        );
+                        //eprintln!(
+                        //     "end of resp section, buf len:{}, pos:{}",
+                        //     self.buffer.len(),
+                        //     self.position
+                        // );
                     }
 
                     Some('$') => {
                         // AT START OF RDB TRANSFER
-                        eprintln!("ACTUAL RDB SECTION");
+                        //eprintln!("ACTUAL RDB SECTION");
                         let rdb_len = match line_str[1..].trim().parse::<usize>() {
                             Ok(n) => n,
                             Err(_) => {
@@ -243,29 +243,29 @@ impl RespConnection {
                         };
                         // Skip RDB data
 
-                        eprintln!("found length {rdb_len}");
+                        //eprintln!("found length {rdb_len}");
                         let rdb_start = self.position; // + line_str.len() + 2; // +1 for \r
-                        eprintln!("after, pos:{}", self.position);
+                                                       //eprintln!("after, pos:{}", self.position);
                         let rdb_end = rdb_start + rdb_len;
-                        eprintln!(
-                            "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
-                            self.buffer.len()
-                        );
+                        //eprintln!(
+                        //    "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
+                        //    self.buffer.len()
+                        //);
 
                         let rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
-                        eprintln!(
-                            "PARSED RDB IN STR:{:?}",
-                            String::from_utf8_lossy(&rdb_bytes)
-                        );
+                        //eprintln!(
+                        //    "PARSED RDB IN STR:{:?}",
+                        //    String::from_utf8_lossy(&rdb_bytes)
+                        //);
                         //self.decode_rdb(rdb_bytes);
 
-                        eprintln!("POSITION AFTER RDB:{}", self.position);
+                        //eprintln!("POSITION AFTER RDB:{}", self.position);
                         self.position = rdb_end;
 
-                        eprintln!("\n\nafter rdb OFFSET:{}", self.offset);
+                        //eprintln!("\n\nafter rdb OFFSET:{}", self.offset);
                         //reset offset after handshake
                         self.offset = self.buffer.len() - self.position;
-                        eprintln!("after reset OFFSET:{}\n\n", self.offset);
+                        //eprintln!("after reset OFFSET:{}\n\n", self.offset);
 
                         break;
                     }
@@ -277,32 +277,32 @@ impl RespConnection {
             }
 
             if (self.buffer.len() as i32) - (self.position as i32) <= 1 {
-                eprintln!(
-                    "breaking with length:{}, curr pos:{}",
-                    self.buffer.len(),
-                    self.position
-                );
+                //eprintln!(
+                //    "breaking with length:{}, curr pos:{}",
+                //    self.buffer.len(),
+                //    self.position
+                //);
                 break;
             } else {
-                eprintln!(
-                    "LOOPING AGAIN len:{}, pos:{}",
-                    self.buffer.len(),
-                    self.position
-                );
+                //eprintln!(
+                //    "LOOPING AGAIN len:{}, pos:{}",
+                //    self.buffer.len(),
+                //    self.position
+                //);
             }
         }
-        eprintln!(
-            "AFTER PARSE commands?{:?}, pos:{}, buffer len:{}",
-            commands,
-            self.position,
-            self.buffer.len()
-        );
+        //eprintln!(
+        //    "AFTER PARSE commands?{:?}, pos:{}, buffer len:{}",
+        //    commands,
+        //    self.position,
+        //    self.buffer.len()
+        //);
 
         Ok(Some(commands))
     }
 
     pub fn broadcast_command(&mut self, command: &[String]) {
-        eprintln!("got signal to propagate to stream:{:?}", self.stream);
+        //eprintln!("got signal to propagate to stream:{:?}", self.stream);
         let s: Vec<&str> = command.iter().map(|e| e.as_str()).collect();
         let resp = self.format_resp_array(&s);
         // let mut stream = self.stream.lock().unwrap();
@@ -321,7 +321,7 @@ impl RespConnection {
     }
 
     pub fn write_to_stream(&mut self, buf: &[u8]) {
-        eprintln!(" stream in write");
+        //eprintln!(" stream in write");
         if let Ok(r) = String::from_utf8(buf.into()) {
             eprintln!("writing to stream: {r}")
         } else {
@@ -346,8 +346,8 @@ impl RespConnection {
     }
 
     // pub fn decode_rdb(&self, received_rdb: Vec<u8>) {
-    //     eprintln!("DECODING RDB BYTES RECEIVED");
-    //     eprintln!(
+    //     //eprintln!("DECODING RDB BYTES RECEIVED");
+    //     //eprintln!(
     //         "read from stream num rdb file:{:?}, length:{:?}",
     //         received_rdb,
     //         received_rdb.len()
@@ -359,9 +359,9 @@ impl RespConnection {
     //     let mut file = File::create(&received_rdb_path).unwrap();
     //     file.write_all(&received_rdb)
     //         .expect("failed to write receive rdb to file");
-    //     //eprintln!("WRPTE RESPONSE TO FILE");
+    //     ////eprintln!("WRPTE RESPONSE TO FILE");
     //     let final_rdb = codecrafters_redis::read_rdb_file(received_rdb_path)
     //         .expect("failed tp read response rdb from file");
-    //     eprintln!("RECEIVED RDB:{:?}", final_rdb);
+    //     //eprintln!("RECEIVED RDB:{:?}", final_rdb);
     // }
 }

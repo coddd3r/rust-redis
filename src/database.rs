@@ -26,24 +26,24 @@ pub const EOF: u8 = 0xFF;
 pub const STRING_TYPE: u8 = 0x00;
 
 pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
-    eprintln!("READING DB");
+    //eprintln!("READING DB");
     let mut db = RedisDatabase::new();
 
     // Read RESIZEDB info (optional)
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf)?;
 
-    eprintln!("before dbsize check buf:{:#04X}", buf[0]);
+    //eprintln!("before dbsize check buf:{:#04X}", buf[0]);
     //if we're resizing, skip hash table sizes
     if buf[0] == RESIZEDB {
-        eprintln!("IN RESIZE OPERATION, skipping bytes");
+        //eprintln!("IN RESIZE OPERATION, skipping bytes");
         //let num_keys = read_bytes(reader)?; // keys size
         reader.read_exact(&mut buf)?;
-        eprintln!("read db, numkeys in hex: {:#04X?}:", buf[0],);
+        //eprintln!("read db, numkeys in hex: {:#04X?}:", buf[0],);
         reader.read_exact(&mut buf)?;
-        eprintln!(" numexpiry in hex {:#04X?}", buf[0]);
+        //eprintln!(" numexpiry in hex {:#04X?}", buf[0]);
         //let num_expiry = read_bytes(reader)?; // expires size
-        // eprintln!(
+        // //eprintln!(
         //     "read db, numkeys in hex: {:#04X?}, numexpiry in hex {:#04X?}",
         //     num_keys, num_expiry
         // );
@@ -52,7 +52,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
 
     let mut reached_eof = false;
     loop {
-        eprintln!("IN READ DB buf[0]: {:#04X?}", buf[0]);
+        //eprintln!("IN READ DB buf[0]: {:#04X?}", buf[0]);
         match buf[0] {
             /* The expire timestamp, expressed in Unix time,
             stored as an 4-byte unsigned long, in little-endian (read right-to-left).*/
@@ -65,7 +65,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
 
                 let k = read_string(reader)?;
                 let v = read_string(reader)?;
-                eprintln!("Sec timeout K:{}, v:{}", &k, &v);
+                //eprintln!("Sec timeout K:{}, v:{}", &k, &v);
                 db.insert(
                     k,
                     RedisValue {
@@ -85,7 +85,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
 
                 let key = read_string(reader)?;
                 let value = read_string(reader)?;
-                eprintln!("MS timeout K:{}, v:{}", key, value);
+                //eprintln!("MS timeout K:{}, v:{}", key, value);
                 db.insert(
                     key,
                     RedisValue {
@@ -96,11 +96,11 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
             }
             /* Here, the flag is 0, which means "string without expiry" */
             STRING_TYPE => {
-                eprintln!("IN match string tpe no timeout");
+                //eprintln!("IN match string tpe no timeout");
                 let key = read_string(reader)?;
                 let value = read_string(reader)?;
 
-                eprintln!("STRING no timeout, k:{key}, v:{value}");
+                //eprintln!("STRING no timeout, k:{key}, v:{value}");
                 db.insert(
                     key,
                     RedisValue {
@@ -110,7 +110,7 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
                 );
             }
             EOF => {
-                eprintln!("REACHED EOF");
+                //eprintln!("REACHED EOF");
                 reached_eof = true;
                 break;
             }
@@ -126,20 +126,20 @@ pub fn read_db<R: Read>(reader: &mut R) -> Result<(RedisDatabase, bool)> {
         }
     }
 
-    eprintln!("AFTER DB LOOP");
+    //eprintln!("AFTER DB LOOP");
     Ok((db, reached_eof))
 }
 
 /// Write database to an RDB file
 pub fn write_database<W: Write>(writer: &mut W, db_index: u8, db: &RedisDatabase) -> Result<()> {
-    //eprintln!("")
+    ////eprintln!("")
     // start with a selector and the provided index
     writer.write_all(&[DB_SELECTOR, db_index])?;
 
     // Write RESIZEDB info (we don't track sizes, so just write 0)
     writer.write_all(&[RESIZEDB])?;
     let num_keys = db.data.len().to_string();
-    eprintln!("Writing to db with num keys:{num_keys}");
+    //eprintln!("Writing to db with num keys:{num_keys}");
     writer.write_all(num_keys.as_bytes())?;
     let expires_len = db
         .data
@@ -147,11 +147,11 @@ pub fn write_database<W: Write>(writer: &mut W, db_index: u8, db: &RedisDatabase
         .filter(|(_, v)| v.expires_at.is_some())
         .count()
         .to_string();
-    eprintln!("Writing to db with num_expiry:{expires_len}");
+    //eprintln!("Writing to db with num_expiry:{expires_len}");
     writer.write_all(expires_len.as_bytes())?;
 
     for (k, v) in &db.data {
-        eprintln!("in write key value for loop");
+        //eprintln!("in write key value for loop");
         // if there is an expiry time
         // write expiry
         if let Some(expiry) = &v.expires_at {

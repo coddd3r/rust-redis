@@ -42,11 +42,11 @@ fn main() {
     let id = utils::random_id_gen();
     let mut info_fields: HashMap<String, String> = HashMap::new();
     info_fields.insert(String::from(ROLE), MASTER.to_string());
-    eprintln!("ID:{:?}", id);
+    //eprintln!("ID:{:?}", id);
     //info_fields.insert("id", id);
 
     let arg_list = std::env::args();
-    eprintln!("ARGS:{:?}", &arg_list);
+    //eprintln!("ARGS:{:?}", &arg_list);
     let mut dir = None;
     let mut db_filename = None;
     let mut full_port = String::from("127.0.0.1:");
@@ -102,13 +102,13 @@ fn main() {
                 *curr_role = SLAVE.to_string();
 
                 if let Some(master) = b.next() {
-                    eprintln!("Running at:{full_port} is replica of:{master}");
+                    //eprintln!("Running at:{full_port} is replica of:{master}");
 
                     /////////
                     let master_p: Vec<_> = master.split_whitespace().collect();
                     let send_to: String = [master_p[0], ":", master_p[1]].into_iter().collect();
                     master_port = Some(master_p[1].to_string());
-                    eprintln!("connecting to master on {send_to}");
+                    //eprintln!("connecting to master on {send_to}");
                     match TcpStream::connect(send_to) {
                         Ok(conn) => {
                             //let s = Arc::new(Mutex::new(conn));
@@ -143,7 +143,7 @@ fn main() {
                                     match res {
                                         Ok(_) => {}
                                         Err(e) => {
-                                            eprintln!("Error handling Master {}", e);
+                                            //eprintln!("Error handling Master {}", e);
                                         }
                                     }
                                 });
@@ -174,7 +174,7 @@ fn main() {
     }
 
     let listener = TcpListener::bind(&full_port).unwrap();
-    eprintln!("Listening on port:{full_port}");
+    //eprintln!("Listening on port:{full_port}");
 
     for stream in listener.incoming() {
         match stream {
@@ -209,7 +209,7 @@ fn main() {
                     match res {
                         Ok(_) => {}
                         Err(e) => {
-                            eprintln!("Error handling client {}", e);
+                            //eprintln!("Error handling client {}", e);
                         }
                     }
                 });
@@ -242,28 +242,28 @@ fn handle_client(
     );
 
     let sent_by_main = master_port.is_some() && get_port(&stream) == *master_port;
-    eprintln!(
-        "IS MASTER?{:?}, master_port:{:?}",
-        master_port.is_some(),
-        master_port
-    );
+    //eprintln!(
+    //     "IS MASTER?{:?}, master_port:{:?}",
+    //     master_port.is_some(),
+    //     master_port
+    // );
 
     //let mut conn = RespConnection::new(Arc::clone(&stream));
     let mut conn = RespConnection::new(stream.try_clone().unwrap());
 
     if sent_by_main {
         conn.is_master = true;
-        eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
+        //eprintln!("\n\n\n\nHANDLING HANDSHAKE\n\n\n\n\n");
         conn.write_to_stream(&conn.format_resp_array(&["PING"]).as_bytes());
         let res = conn.try_read_command();
         sleep(Duration::from_millis(10));
-        eprintln!("Read result: {:?}", res);
+        //eprintln!("Read result: {:?}", res);
 
         let use_bytes = conn.format_resp_array(&[REPL_CONF, LISTENING_PORT, replica_port.unwrap()]);
         conn.write_to_stream(&use_bytes.as_bytes());
         let res = conn.try_read_command();
         sleep(Duration::from_millis(10));
-        eprintln!("Read result: {:?}", res);
+        //eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(
             &conn
@@ -272,7 +272,7 @@ fn handle_client(
         );
         let res = conn.try_read_command();
         sleep(Duration::from_millis(10));
-        eprintln!("Read result: {:?}", res);
+        //eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]).as_bytes());
         //ignore the last sent after psync
@@ -280,15 +280,15 @@ fn handle_client(
 
     let mut write_command: Vec<_> = Vec::new();
 
-    let mut waiting_until = SystemTime::now();
+    //let mut waiting_until = SystemTime::now();
     let mut all_multi_commands = Vec::new();
     let mut is_exec_mode = false;
     let mut hold_all_exec_reponse: Vec<String> = Vec::new();
     loop {
         match conn.try_read_command() {
             Ok(Some(mut commands)) => {
-                //eprintln!("ALL COMMANDS:{:?}", commands);
-                //eprintln!("current broadcast info:{:?}", broadcast_info);
+                eprintln!("ALL COMMANDS:{:?}", commands);
+                ////eprintln!("current broadcast info:{:?}", broadcast_info);
 
                 let mut response_to_write = String::new();
                 let mut exec_present = false;
@@ -313,8 +313,8 @@ fn handle_client(
                     commands = all_multi_commands;
                     all_multi_commands = Vec::new();
                     is_exec_mode = true;
-                    eprintln!("\n\nEXEC MODE\n\n");
-                    eprintln!("exec commands:{:?}", commands);
+                    //eprintln!("\n\nEXEC MODE\n\n");
+                    //eprintln!("exec commands:{:?}", commands);
                     conn.multi_waiting = false;
                 } else if conn.multi_waiting {
                     all_multi_commands.extend(commands);
@@ -324,26 +324,26 @@ fn handle_client(
 
                 for all_lines in commands {
                     if all_lines.is_empty() {
-                        eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
+                        //eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
                         continue;
                     }
-                    eprintln!("ALL LINES:{:?}", all_lines);
+                    //eprintln!("ALL LINES:{:?}", all_lines);
 
                     let cmd = &all_lines[0].to_lowercase();
-                    eprintln!("handling command:{cmd}");
+                    //eprintln!("handling command:{cmd}");
                     match cmd.as_str() {
                         "command" => {
-                            eprintln!("INITIATION, no command");
+                            //eprintln!("INITIATION, no command");
                             return Ok(());
                         }
                         "ping" => {
                             if !sent_by_main {
                                 response_to_write = PONG_RESPONSE.to_string();
                             }
-                            eprintln!(
-                                "\nIGNORING ping set by main, is replica?{}",
-                                master_port.is_some()
-                            );
+                            //eprintln!(
+                            //    "\nIGNORING ping set by main, is replica?{}",
+                            //    master_port.is_some()
+                            //);
                         }
                         "echo" => {
                             //let resp = [b"+", all_lines[1].as_bytes(), b"\r\n"].concat();
@@ -353,9 +353,9 @@ fn handle_client(
 
                         "set" => {
                             write_command = all_lines.clone();
-                            eprintln!("after setting write commands:{:?}", write_command);
-                            eprintln!("IN handle client SET,");
-                            eprintln!("sent by MAIN:{sent_by_main}");
+                            //eprintln!("after setting write commands:{:?}", write_command);
+                            //eprintln!("IN handle client SET,");
+                            //eprintln!("sent by MAIN:{sent_by_main}");
 
                             if all_lines.len() < 3 {
                                 response_to_write = RESP_NULL.to_string();
@@ -363,10 +363,10 @@ fn handle_client(
                             }
 
                             if info_fields.get(ROLE).is_some_and(|k| k == MASTER) {
-                                eprintln!(
-                                    "Master starting PROPAGATION with info, {:?}",
-                                    broadcast_info
-                                );
+                                //eprintln!(
+                                //    "Master starting PROPAGATION with info, {:?}",
+                                //    broadcast_info
+                                //);
                                 {
                                     let mut lk = broadcast_info.lock().unwrap();
                                     lk.broadcast_command(&all_lines);
@@ -382,7 +382,7 @@ fn handle_client(
                             }
                             let r = handle_set(k, v, &new_db, use_time);
                             if r.is_ok() && !sent_by_main {
-                                eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
+                                //eprintln!("after set writing ok to stream, curr db:{:?}", new_db);
                                 response_to_write = RESP_OK.to_string()
                             }
                         }
@@ -395,17 +395,17 @@ fn handle_client(
                                 response_to_write = RESP_NULL.to_string();
                                 continue;
                             }
-                            eprintln!("IN handle client GET, db:{:?}", new_db);
+                            //eprintln!("IN handle client GET, db:{:?}", new_db);
                             let get_key = &all_lines[1];
                             {
-                                //eprintln!("in handle GET function before lock");
+                                ////eprintln!("in handle GET function before lock");
                                 let mut lk = new_db.lock().expect("failed to lock db in get");
-                                //eprintln!("in handle GET function locked db:{:?}", lk);
+                                ////eprintln!("in handle GET function locked db:{:?}", lk);
                                 if let Some(res) = lk.get(&get_key) {
                                     if res.expires_at.is_some()
                                         && res.expires_at.as_ref().unwrap().is_expired()
                                     {
-                                        //eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
+                                        ////eprintln!("ASKING FOR EXPIRED!!?? key: {get_key}");
                                         lk.data.remove(get_key);
                                         response_to_write = RESP_NULL.to_string();
                                     } else {
@@ -413,7 +413,7 @@ fn handle_client(
                                         response_to_write = resp;
                                     }
                                 } else {
-                                    //eprintln!("IN GET FOUND NONE");
+                                    ////eprintln!("IN GET FOUND NONE");
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -446,11 +446,11 @@ fn handle_client(
                                         }
                                     }
                                     _ => {
-                                        eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+                                        //eprintln!("UNRECOGNIZED GET CONFIG FIELD");
                                     }
                                 },
                                 _ => {
-                                    eprintln!("UNRECOGNIZED CONFIG COMMAND")
+                                    //eprintln!("UNRECOGNIZED CONFIG COMMAND")
                                 }
                             }
                         }
@@ -459,24 +459,24 @@ fn handle_client(
                         "keys" => {
                             let path: PathBuf;
                             if db_filename.is_some() && dir.is_some() {
-                                eprintln!("FOUND FILE");
+                                //eprintln!("FOUND FILE");
                                 let file = db_filename.as_ref().unwrap();
 
                                 let directory = dir.as_ref().unwrap();
-                                eprintln!("OUND DIR");
+                                //eprintln!("OUND DIR");
                                 // write current hashmap to rdb
                                 path = Path::new(directory).join(file);
                             } else {
                                 path = env::current_dir().unwrap().join("dump.rdb");
                             }
 
-                            eprintln!("USING PATH:{:?}", &path);
+                            //eprintln!("USING PATH:{:?}", &path);
 
                             let mut file = File::open(&path)?;
                             let mut buffer = Vec::new();
                             file.read_to_end(&mut buffer)?;
 
-                            // eprintln!("Printin rdb as HEX");
+                            // //eprintln!("Printin rdb as HEX");
                             // print_hex::print_hex_dump(&buffer);
                             match read_rdb_file(path) {
                                 Ok(rdb) => {
@@ -492,7 +492,7 @@ fn handle_client(
                                     )
                                 }
                                 Err(_e) => {
-                                    //eprintln!("failed to read from rdb file {:?}", e);
+                                    ////eprintln!("failed to read from rdb file {:?}", e);
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -500,14 +500,14 @@ fn handle_client(
 
                         //SAVE
                         "save" => {
-                            eprintln!("IN SAVE");
+                            //eprintln!("IN SAVE");
                             let mut path: PathBuf;
                             if db_filename.is_some() && dir.is_some() {
                                 // create a new file path then write current hashmap to rdb
                                 path = Path::new(dir.as_ref().unwrap())
                                     .join(db_filename.as_ref().unwrap());
 
-                                eprintln!("Path:{:?}", &path);
+                                //eprintln!("Path:{:?}", &path);
                                 let mut new_rdb = RdbFile {
                                     version: "0011".to_string(),
                                     metadata: HashMap::new(),
@@ -517,18 +517,18 @@ fn handle_client(
                                 new_rdb
                                     .metadata
                                     .insert("redis-version".to_string(), "6.0.16".to_string());
-                                eprintln!("IN Save, using map {:?}", new_db);
+                                //eprintln!("IN Save, using map {:?}", new_db);
                                 {
                                     let lk = new_db.lock().expect("failed to lock db in save");
                                     new_rdb.databases.insert(0, lk.clone().try_into()?);
-                                    eprintln!("Creating a new rdb with {:?}", new_rdb);
+                                    //eprintln!("Creating a new rdb with {:?}", new_rdb);
                                 }
                                 let _ = write_rdb_file(path, &new_rdb);
 
-                                eprintln!("after SAVE writing to file");
+                                //eprintln!("after SAVE writing to file");
                                 response_to_write = RESP_OK.to_string();
                             } else {
-                                eprintln!("Creating DUMMY in curr dir");
+                                //eprintln!("Creating DUMMY in curr dir");
                                 path = env::current_dir().unwrap();
                                 path.push("dump.rdb");
                                 //print_hex::create_dummy_rdb(&path)?;
@@ -540,7 +540,7 @@ fn handle_client(
                         //INFO
                         "info" => {
                             //if there is an extra key arg/"se"
-                            eprintln!("IN INFO SECTION");
+                            //eprintln!("IN INFO SECTION");
                             if all_lines.len() > 2 {
                                 let info_key = &all_lines[1];
                                 let mut use_resp = String::new();
@@ -558,10 +558,10 @@ fn handle_client(
                                     }
                                     _ => {}
                                 }
-                                eprintln!("INFO RESPONSE:{:?}", use_resp);
+                                //eprintln!("INFO RESPONSE:{:?}", use_resp);
                                 response_to_write = get_bulk_string(&use_resp);
                             } else {
-                                eprintln!("IN INFO ELSE");
+                                //eprintln!("IN INFO ELSE");
                                 let mut use_val = String::new();
 
                                 info_fields
@@ -570,19 +570,19 @@ fn handle_client(
                                 // remove the last CRLF
                                 let info_res =
                                     utils::get_bulk_string(&use_val[..use_val.len() - 2]);
-                                //eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
-                                eprintln!("RESPONSE:{:?}", &info_res);
+                                ////eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
+                                //eprintln!("RESPONSE:{:?}", &info_res);
                                 response_to_write = info_res;
                             }
-                            eprintln!("AFTER INFO SECTION");
+                            //eprintln!("AFTER INFO SECTION");
                         }
 
                         //REPL
                         "replconf" => {
-                            eprintln!("HANDLING REPL CONF");
+                            //eprintln!("HANDLING REPL CONF");
                             match all_lines[1].as_str() {
                                 GETACK => {
-                                    eprintln!("in get ack offset before - 37{},", conn.offset);
+                                    //eprintln!("in get ack offset before - 37{},", conn.offset);
                                     let curr_offset = conn.offset - 37;
                                     // conn.write_to_stream(&conn.format_resp_array(&[
                                     //     REPL_CONF,
@@ -601,22 +601,22 @@ fn handle_client(
                                         let mut lk = broadcast_info.lock().unwrap();
                                         lk.ports.push(all_lines[2].clone());
                                     }
-                                    eprintln!("after repl pushing ports:{:?}", broadcast_info);
+                                    //eprintln!("after repl pushing ports:{:?}", broadcast_info);
                                     response_to_write = RESP_OK.to_string();
                                 }
 
                                 ACK => {
                                     let mut lk = broadcast_info.lock().unwrap();
-                                    eprintln!("got command in ACK, num waiting for:{}, wiaiting until:{:?}",lk.num_waiting_for, waiting_until);
+                                    //eprintln!("got command in ACK, num waiting for:{}, wiaiting until:{:?}",lk.num_waiting_for, waiting_until);
                                     if lk.num_waiting_for > 0 {
-                                        eprintln!("ADD TO ACK");
+                                        //eprintln!("ADD TO ACK");
                                         lk.num_acks += 1;
                                     }
                                 }
 
                                 _ => {
                                     response_to_write = RESP_OK.to_string();
-                                    eprintln!("WROTE ok to other replconf");
+                                    //eprintln!("WROTE ok to other replconf");
                                 }
                             }
                         }
@@ -643,19 +643,19 @@ fn handle_client(
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
                                 //stream.write_all(&resync_response)?;
-                                eprintln!("\n\n\nGOT HANDSHAKE??\n\n\n");
-                                eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
+                                //eprintln!("\n\n\nGOT HANDSHAKE??\n\n\n");
+                                //eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
                                 s.write_to_stream(&resync_response);
 
-                                eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
+                                //eprint!("\n\n\nSENDING RDB USING SAVED STREAM:{:?}\n\n", s);
                                 let dummy_rdb_path = env::current_dir().unwrap().join("empty.rdb");
                                 // let dummy_rdb_path =
                                 //     env::current_dir().unwrap().join("dump_dummy.rdb");
                                 // create_dummy_rdb(&dummy_rdb_path.as_path())
                                 //     .expect("FAILED TO MAKE DUMMY RDB");
                                 if let Ok(response_rdb_bytes) = fs::read(dummy_rdb_path) {
-                                    eprintln!("IN MASTER SENDING RDB");
-                                    eprintln!("writing rdb len {}", response_rdb_bytes.len());
+                                    //eprintln!("IN MASTER SENDING RDB");
+                                    //eprintln!("writing rdb len {}", response_rdb_bytes.len());
                                     //print_hex_dump(&response_rdb_bytes);
 
                                     s.write_to_stream(
@@ -670,10 +670,10 @@ fn handle_client(
                                     s.write_to_stream(&response_rdb_bytes)
                                 }
                             };
-                            eprintln!(
-                                "AFTER FULL RESYNC adding connection to broadcast info, new {:?}",
-                                broadcast_info
-                            );
+                            //eprintln!(
+                            //    "AFTER FULL RESYNC adding connection to broadcast info, new {:?}",
+                            //    broadcast_info
+                            //);
                         }
 
                         "wait" => {
@@ -681,12 +681,10 @@ fn handle_client(
                             let num_required = all_lines[1].parse::<usize>().unwrap();
                             let wait_for_ms =
                                 Duration::from_millis(all_lines[2].parse::<u64>().unwrap());
-                            waiting_until = SystemTime::now() + wait_for_ms;
                             {
                                 let mut lk = broadcast_info.lock().unwrap();
                                 lk.num_waiting_for = num_required;
-                                lk.waiting_until = waiting_until;
-                                eprintln!("setting num waiting for:{}", lk.num_waiting_for);
+                                lk.waiting_until = SystemTime::now() + wait_for_ms; //eprintln!("setting num waiting for:{}", lk.num_waiting_for);
                                 lk.connections.iter().enumerate().for_each(|(i, c)| {
                                     all_repls
                                         .push((c.stream.try_clone().unwrap(), lk.ports[i].clone()))
@@ -697,10 +695,10 @@ fn handle_client(
                             let ack_req =
                                 conn.format_resp_array(&[crate::REPL_CONF, crate::GETACK, "*"]);
 
-                            eprintln!(
-                                "checking n={} replicas, waiting for{:?}",
-                                num_repls, wait_for_ms
-                            );
+                            //eprintln!(
+                            //    "checking n={} replicas, waiting for{:?}",
+                            //    num_repls, wait_for_ms
+                            //);
 
                             let mut acq_threads = Vec::new();
                             if !write_command.is_empty() {
@@ -722,7 +720,7 @@ fn handle_client(
                                     && (SystemTime::now() > lk.waiting_until
                                         || lk.num_acks == lk.num_waiting_for)
                                 {
-                                    eprintln!("\n\nRESPONDING WITH {} ACKS\n\n", lk.num_acks);
+                                    //eprintln!("\n\nRESPONDING WITH {} ACKS\n\n", lk.num_acks);
                                     // conn.write_to_stream(
                                     //     &[
                                     //         ":".as_bytes(),
@@ -738,7 +736,7 @@ fn handle_client(
                                 }
                                 std::mem::drop(lk);
 
-                                eprintln!("after threads");
+                                //eprintln!("after threads");
                             } else {
                                 response_to_write = format!(":{}\r\n", num_repls);
                             }
@@ -746,10 +744,10 @@ fn handle_client(
 
                         "type" => {
                             let key = &all_lines[1];
-                            eprintln!(
-                                "key:{key}, currentdb:{:?}, current entry_strem{:?}",
-                                new_db, entry_streams
-                            );
+                            //eprintln!(
+                            //    "key:{key}, currentdb:{:?}, current entry_strem{:?}",
+                            //    new_db, entry_streams
+                            //);
 
                             if new_db.lock().unwrap().get(key).is_some() {
                                 response_to_write = STRING.to_string();
@@ -763,8 +761,8 @@ fn handle_client(
                         "xadd" => {
                             let stream_name = all_lines[1].clone();
                             let stream_id = all_lines[2].clone();
-                            let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
-                            eprintln!("handling x_add with key:{stream_name}, id:{stream_id}, k:{k}, v:{v}");
+                            //let (k, v) = (all_lines[3].clone(), all_lines[4].clone());
+                            //eprintln!("handling x_add with key:{stream_name}, id:{stream_id}, k:{k}, v:{v}");
 
                             let mut lk = entry_streams.lock().unwrap();
                             let curr_stream =
@@ -788,9 +786,9 @@ fn handle_client(
                             let stream_name = all_lines[1].clone();
                             let start = all_lines[2].clone();
                             let end = all_lines[3].clone();
-                            eprintln!(
-                                "handling XRANGE with key:{stream_name}, start:{start}, end:{end}"
-                            );
+                            //eprintln!(
+                            //    "handling XRANGE with key:{stream_name}, start:{start}, end:{end}"
+                            //);
                             {
                                 let mut lk = entry_streams.lock().unwrap();
                                 let curr_stream =
@@ -813,7 +811,7 @@ fn handle_client(
                                 //TODO: IF TIME STRING IS 0 add a blcoked stream conn clone to
                                 //waiting streams
 
-                                eprintln!("\n\n\nGOT BLOCK with time{}\n\n\n", all_lines[2]);
+                                //eprintln!("\n\n\nGOT BLOCK with time{}\n\n\n", all_lines[2]);
                                 let actual_time = time_str.as_ref().unwrap();
                                 full_block = actual_time == &0;
                                 time_to_block_for =
@@ -821,7 +819,7 @@ fn handle_client(
                                 if !full_block {
                                     sleep(time_to_block_for);
                                 } else {
-                                    eprintln!("\n\nFULL BLOCK\n\n");
+                                    //eprintln!("\n\nFULL BLOCK\n\n");
                                 }
                                 all_streams = get_all_stream_names(&all_lines[4..]);
                             } else {
@@ -834,17 +832,17 @@ fn handle_client(
                                 let curr_stream = lk
                                     .entry(stream_name.clone())
                                     .or_insert(RedisEntryStream::new());
-                                eprintln!("curr stream{:?}", curr_stream);
+                                //eprintln!("curr stream{:?}", curr_stream);
 
-                                eprintln!("running xread for stream_name{:?}", &stream_name);
+                                //eprintln!("running xread for stream_name{:?}", &stream_name);
                                 if full_block {
-                                    eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
+                                    //eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
                                     curr_stream.waiting_streams.insert(
                                         stream_name.clone(),
                                         conn.stream.try_clone().unwrap(),
                                     );
                                 } else {
-                                    eprintln!("\n\n\nNOT full block\n\n\n");
+                                    //eprintln!("\n\n\nNOT full block\n\n\n");
                                     let res = {
                                         if block {
                                             curr_stream.block_xread(
@@ -864,7 +862,7 @@ fn handle_client(
                             }
 
                             let full_stream_bytes = get_xread_resp_array(&final_res);
-                            eprintln!("FINAL xread res:{:?}", full_stream_bytes);
+                            //eprintln!("FINAL xread res:{:?}", full_stream_bytes);
                             if !full_block {
                                 response_to_write = full_stream_bytes;
                             }
@@ -972,7 +970,7 @@ fn handle_client(
                      */
                     if is_exec_mode {
                         hold_all_exec_reponse.push(response_to_write.clone());
-                        eprintln!("EXEC MODE!! with resps:{:?}", hold_all_exec_reponse);
+                        //eprintln!("EXEC MODE!! with resps:{:?}", hold_all_exec_reponse);
                         continue;
                     } else if !response_to_write.is_empty() {
                         conn.write_to_stream(response_to_write.as_bytes());
@@ -981,7 +979,7 @@ fn handle_client(
             }
             Ok(None) => {}
             Err(e) => {
-                eprintln!("Connection error: {}", e);
+                //eprintln!("Connection error: {}", e);
                 break;
             }
         }
