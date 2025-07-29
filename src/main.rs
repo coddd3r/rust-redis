@@ -45,6 +45,7 @@ const LISTENING_PORT: &str = "listening-port";
 const PSYNC: &str = "PSYNC";
 const FULLRESYNC: &str = "FULLRESYNC";
 const DEFAULT_PORT: &str = "6379";
+const NOT_INT_ERROR: &[u8; 46] = b"-ERR value is not an integer or out of range\r\n";
 
 const RESP_OK: &[u8; 5] = b"+OK\r\n";
 const RESP_NULL: &[u8; 5] = b"$-1\r\n";
@@ -882,17 +883,33 @@ fn handle_client(
 
                         "incr" => {
                             let mut lk = new_db.lock().unwrap();
-                            let key = &all_lines[1];
-                            match lk.data.get_mut(key) {
-                                Some(rv) => {
-                                    if let Ok(val) = rv.value.parse::<i32>() {
-                                        let new_val = val + 1;
-                                        rv.value = new_val.to_string();
-                                        conn.write_to_stream(&get_redis_int(new_val));
-                                    }
-                                }
-                                None => {}
+                            let key = all_lines[1].clone();
+                            // let val = {
+                            //     if all_lines.len() > 2 {
+                            //         Some(&all_lines[2])
+                            //     } else {
+                            //         None
+                            //     }
+                            // };
+
+                            let rv = lk.data.entry(key).or_insert(RedisValue {
+                                value: "0".to_string(),
+                                expires_at: None,
+                            });
+
+                            if let Ok(val) = rv.value.parse::<i32>() {
+                                let new_val = val + 1;
+                                rv.value = new_val.to_string();
+                                conn.write_to_stream(&get_redis_int(new_val));
+                            } else {
+                                conn.write_to_stream(NOT_INT_ERROR);
                             }
+
+                            // match  {
+                            //     Some(rv) => {
+                            //                                   //     }
+                            //     None => {}
+                            // }
                         }
 
                         _unrecognized_cmd => {
