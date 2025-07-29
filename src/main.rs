@@ -300,7 +300,7 @@ fn handle_client(
                 }
 
                 for all_lines in commands {
-                    if all_lines.len() < 1 {
+                    if all_lines.is_empty() {
                         eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
                         continue;
                     }
@@ -309,6 +309,10 @@ fn handle_client(
                     let cmd = &all_lines[0].to_lowercase();
                     eprintln!("handling command:{cmd}");
                     match cmd.as_str() {
+                        "command" => {
+                            eprintln!("INITIATION, no command");
+                            return Ok(());
+                        }
                         "ping" => {
                             if !sent_by_main {
                                 response_to_write = PONG_RESPONSE.to_string();
@@ -724,20 +728,13 @@ fn handle_client(
                                 new_db, entry_streams
                             );
 
-                            {
-                                if new_db.lock().unwrap().get(key).is_some() {
-                                    response_to_write = STRING.to_string();
-                                    continue;
-                                }
+                            if new_db.lock().unwrap().get(key).is_some() {
+                                response_to_write = STRING.to_string();
+                            } else if entry_streams.lock().unwrap().get(key).is_some() {
+                                response_to_write = conn.get_simple_str("stream");
+                            } else {
+                                response_to_write = NONE_TYPE.to_string();
                             }
-
-                            {
-                                if entry_streams.lock().unwrap().get(key).is_some() {
-                                    response_to_write = conn.get_simple_str("stream");
-                                    continue;
-                                }
-                            }
-                            response_to_write = NONE_TYPE.to_string();
                         }
 
                         "xadd" => {
@@ -848,11 +845,6 @@ fn handle_client(
                             if !full_block {
                                 response_to_write = full_stream_bytes;
                             }
-                        }
-
-                        "command" => {
-                            eprintln!("INITIATION, no command");
-                            return Ok(());
                         }
 
                         "incr" => {
