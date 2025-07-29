@@ -102,8 +102,6 @@ impl RedisEntryStream {
                 }
             }
 
-            // //NOTE: Wait for block to be added
-            // sleep(Duration::from_millis(100));
             eprintln!("IN XADD waiting:{:?}", self.waiting_streams);
             if !self.waiting_streams.is_empty() {
                 eprintln!("\n WAITIN FORRR \n\n");
@@ -348,7 +346,7 @@ impl RedisEntryStream {
         start: &str,
     ) -> Option<(String, Vec<(String, RedisEntry)>)> {
         eprintln!(
-            "IN XBLOCK FUNC checking for entries starting:{:?}\n, until {:?}\n, blocking for {:?}\n, curr entries:{:?}",
+            "IN XBLOCK FUNC checking for entries starting:{:?}\n, until {:?}\n, blocking for {:?}\n, curr entries:{:?}\n, stream_name{stream_name},\n start seqid:{start}",
             block_start_time,
             block_start_time + time_to_block_for,
             time_to_block_for,
@@ -448,7 +446,10 @@ impl RedisEntryStream {
         }
 
         eprintln!("Got check keys:{:?}", check_keys);
-
-        Some((stream_name.to_string(), check_keys))
+        if !check_keys.is_empty() {
+            Some((stream_name.to_string(), check_keys))
+        } else {
+            None
+        }
     }
 }

@@ -1,5 +1,6 @@
 use crate::{entry_stream::RedisEntry, utils::get_bulk_string};
 
+// Get stream name and seq id pairs
 pub fn get_all_stream_names(lines: &[String]) -> Vec<(String, String)> {
     let mut use_vec = Vec::new();
     for (i, element) in lines.iter().enumerate() {
