@@ -13,7 +13,7 @@ use crate::entry_stream::entry_utils::{get_all_stream_names, get_xread_resp_arra
 use crate::entry_stream::RedisEntryStream;
 use crate::redis_channel::Channel;
 use crate::redis_connection::broadcast_info::BroadCastInfo;
-use crate::redis_connection::redis_parser::RedisConnection;
+use crate::redis_connection::RedisConnection;
 use crate::redis_database::{
     read_rdb_file, write_rdb_file, RdbError, RdbFile, RedisDatabase, RedisValue,
 };

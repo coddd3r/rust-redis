@@ -2,7 +2,7 @@ use std::net::TcpStream;
 use std::time::SystemTime;
 use std::usize;
 
-use crate::redis_connection::redis_parser::RedisConnection;
+use crate::redis_connection::RedisConnection;
 
 #[derive(Debug)]
 pub struct BroadCastInfo {
