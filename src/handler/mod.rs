@@ -898,8 +898,9 @@ pub fn handle_connection(
                                 subber.channel_count += 1;
                                 chan.subscribers.push(conn.stream.try_clone().unwrap());
                                 response_to_write = format!(
-                                    "*3\r\n{}{chan_name}{}",
+                                    "*3\r\n{}{}{}",
                                     get_bulk_string("subscribe"),
+                                    get_bulk_string(chan_name),
                                     get_redis_int(subber.channel_count as i32)
                                 );
                             }
