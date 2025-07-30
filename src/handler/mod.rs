@@ -846,8 +846,8 @@ pub fn handle_connection(
                                         .blocking_pop_streams
                                         .push(conn.stream.try_clone().unwrap());
                                 } else {
-                                    let blocking_dur =
-                                        Duration::from_nanos((blocking_time * 1_000_000.0) as u64);
+                                    let blocking_ns = (blocking_time * 1_000_000.0) as u64;
+                                    let blocking_dur = Duration::from_nanos(blocking_ns);
                                     timed_block =
                                         Some((conn.stream.try_clone().unwrap(), blocking_dur));
                                 }
@@ -860,6 +860,7 @@ pub fn handle_connection(
                                     //sleep(blocking_dur / 5);
                                     sleep(Duration::from_millis(50));
                                     if SystemTime::now() > blocking_until {
+                                        let _ = st.write_all(RESP_NULL.as_bytes());
                                         break;
                                     }
                                     let mut lk = use_lkd_db.lock().unwrap();
