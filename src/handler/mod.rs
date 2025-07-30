@@ -715,6 +715,17 @@ pub fn handle_connection(
                                 use_list.values.push(e.clone());
                             });
                             response_to_write = get_redis_int(use_list.values.len() as i32);
+
+                            for _ in 0..use_list.blocking_pop_streams.len() {
+                                if !use_list.values.is_empty() {
+                                    let mut bl_stream = use_list.blocking_pop_streams.remove(0);
+                                    let _ = bl_stream.write_all(
+                                        get_bulk_string(&use_list.values.remove(0)).as_bytes(),
+                                    );
+                                } else {
+                                    break;
+                                }
+                            }
                         }
 
                         "lpush" => {
@@ -812,6 +823,64 @@ pub fn handle_connection(
                                     }
                                 }
                                 None => response_to_write = RESP_NULL.to_string(),
+                            }
+                        }
+
+                        "blpop" => {
+                            let key = all_lines[1].clone();
+                            let blocking_time = all_lines[2].parse::<usize>().unwrap();
+                            let mut timed_block = None;
+
+                            // scope to make sure lock is dropped after match
+                            {
+                                let mut lk = lists_map.lock().unwrap();
+                                let search_opt = lk.get_mut(&key);
+                                match search_opt {
+                                    Some(use_list) => {
+                                        if blocking_time == 0 && !use_list.values.is_empty() {
+                                            response_to_write =
+                                                get_bulk_string(&use_list.values.remove(0));
+                                        } else if blocking_time == 0 {
+                                            use_list
+                                                .blocking_pop_streams
+                                                .push(conn.stream.try_clone().unwrap());
+                                        } else {
+                                            let blocking_dur =
+                                                Duration::from_millis(blocking_time as u64);
+                                            timed_block = Some((
+                                                conn.stream.try_clone().unwrap(),
+                                                blocking_dur,
+                                            ));
+                                        }
+                                    }
+                                    None => response_to_write = RESP_NULL.to_string(),
+                                }
+                            }
+
+                            if let Some((mut st, blocking_dur)) = timed_block {
+                                let blocking_until = SystemTime::now() + blocking_dur;
+                                let use_lkd_db = Arc::clone(&lists_map);
+                                thread::spawn(move || loop {
+                                    //sleep(blocking_dur / 5);
+                                    sleep(Duration::from_millis(50));
+                                    if SystemTime::now() > blocking_until {
+                                        break;
+                                    }
+                                    let mut lk = use_lkd_db.lock().unwrap();
+                                    let search_opt = lk.get_mut(&key);
+                                    match search_opt {
+                                        Some(use_list) => {
+                                            if !use_list.values.is_empty() {
+                                                let _ = st.write_all(
+                                                    &get_bulk_string(&use_list.values.remove(0))
+                                                        .as_bytes(),
+                                                );
+                                                break;
+                                            }
+                                        }
+                                        None => {}
+                                    }
+                                });
                             }
                         }
 
