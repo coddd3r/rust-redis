@@ -25,10 +25,11 @@ impl RedisList {
         for _ in 0..self.blocking_pop_streams.len() {
             if !self.values.is_empty() {
                 let mut bl_stream = self.blocking_pop_streams.remove(0);
-                let _ = bl_stream.write_all(
-                    get_resp_from_string(&[self.name_key.clone(), self.values.remove(0)])
-                        .as_bytes(),
-                );
+                let bl_response =
+                    get_resp_from_string(&[self.name_key.clone(), self.values.remove(0)]);
+
+                eprintln!("\nwriting to blpop:{bl_response}\n");
+                let _ = bl_stream.write_all(bl_response.as_bytes());
             } else {
                 break;
             }
