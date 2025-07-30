@@ -139,13 +139,11 @@ pub fn handle_connection(
                             return Ok(());
                         }
                         "ping" => {
-                            if !sent_by_main {
+                            if conn.in_sub_mode {
+                                response_to_write = conn.format_resp_array(&["PONG", ""]);
+                            } else if !sent_by_main {
                                 response_to_write = PONG_RESPONSE.to_string();
                             }
-                            //eprintln!(
-                            //    "\nIGNORING ping set by main, is replica?{}",
-                            //    master_port.is_some()
-                            //);
                         }
                         "echo" => {
                             //let resp = [b"+", all_lines[1].as_bytes(), b"\r\n"].concat();
