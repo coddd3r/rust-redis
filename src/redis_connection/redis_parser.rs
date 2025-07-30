@@ -49,6 +49,7 @@ impl RedisConnection {
                 //if !self.is_master {
                 self.prev_offset = self.offset + 0;
                 self.offset += n;
+                eprintln!("current offset:{}", self.offset);
                 //}
                 self.buffer.extend_from_slice(&temp_buf[..n]);
             }

@@ -214,7 +214,7 @@ pub fn handle_connection(
                                         response_to_write = resp;
                                     }
                                 } else {
-                                    ////eprintln!("IN GET FOUND NONE");
+                                    eprintln!("IN GET FOUND NONE");
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -247,11 +247,11 @@ pub fn handle_connection(
                                         }
                                     }
                                     _ => {
-                                        //eprintln!("UNRECOGNIZED GET CONFIG FIELD");
+                                        eprintln!("UNRECOGNIZED GET CONFIG FIELD");
                                     }
                                 },
                                 _ => {
-                                    //eprintln!("UNRECOGNIZED CONFIG COMMAND")
+                                    eprintln!("UNRECOGNIZED CONFIG COMMAND")
                                 }
                             }
                         }
@@ -264,7 +264,7 @@ pub fn handle_connection(
                                 let file = db_filename.as_ref().unwrap();
 
                                 let directory = dir.as_ref().unwrap();
-                                //eprintln!("OUND DIR");
+                                //eprintln!("FOUND DIR");
                                 // write current hashmap to rdb
                                 path = Path::new(directory).join(file);
                             } else {
@@ -292,8 +292,8 @@ pub fn handle_connection(
                                             .as_slice(),
                                     )
                                 }
-                                Err(_e) => {
-                                    ////eprintln!("failed to read from rdb file {:?}", e);
+                                Err(e) => {
+                                    eprintln!("failed to read from rdb file {:?}", e);
                                     response_to_write = RESP_NULL.to_string();
                                 }
                             }
@@ -341,7 +341,6 @@ pub fn handle_connection(
                         //INFO
                         "info" => {
                             //if there is an extra key arg/"se"
-                            //eprintln!("IN INFO SECTION");
                             if all_lines.len() > 2 {
                                 let info_key = &all_lines[1];
                                 let mut use_resp = String::new();
@@ -370,7 +369,6 @@ pub fn handle_connection(
                                     .for_each(|(k, v)| use_val.extend([k, ":", v, "\r\n"]));
                                 // remove the last CRLF
                                 let info_res = get_bulk_string(&use_val[..use_val.len() - 2]);
-                                ////eprintln!("RESPONSE:{:?}", String::from_utf8_lossy(&info_res));
                                 //eprintln!("RESPONSE:{:?}", &info_res);
                                 response_to_write = info_res;
                             }
@@ -382,13 +380,8 @@ pub fn handle_connection(
                             //eprintln!("HANDLING REPL CONF");
                             match all_lines[1].as_str() {
                                 GETACK => {
-                                    //eprintln!("in get ack offset before - 37{},", conn.offset);
+                                    eprintln!("in get ack offset before - 37{},", conn.offset);
                                     let curr_offset = conn.offset - 37;
-                                    // conn.write_to_stream(&conn.format_resp_array(&[
-                                    //     REPL_CONF,
-                                    //     ACK,
-                                    //     curr_offset.to_string().as_str(),
-                                    // ]));
                                     response_to_write = conn.format_resp_array(&[
                                         REPL_CONF,
                                         ACK,
@@ -443,7 +436,7 @@ pub fn handle_connection(
                                 let n = lk.connections.len();
                                 let s = &mut lk.connections[n - 1];
                                 //stream.write_all(&resync_response)?;
-                                //eprintln!("\n\n\nGOT HANDSHAKE??\n\n\n");
+                                eprintln!("\n\n\n MASTER GOT HANDSHAKE??\n\n\n");
                                 //eprint!("\n\n\nSENDING RESYNC RESPONSE USING SAVED STREAM\n\n");
                                 s.write_to_stream(&resync_response);
 
@@ -896,12 +889,13 @@ pub fn handle_connection(
                                 let subber =
                                     sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
                                 subber.channel_count += 1;
+                                let num_chans = (subber.channel_count + 0) as i32;
                                 chan.subscribers.push(conn.stream.try_clone().unwrap());
                                 response_to_write = format!(
                                     "*3\r\n{}{}{}",
                                     get_bulk_string("subscribe"),
                                     get_bulk_string(chan_name),
-                                    get_redis_int(subber.channel_count as i32)
+                                    get_redis_int(num_chans)
                                 );
                             }
                         }
