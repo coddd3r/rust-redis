@@ -127,6 +127,7 @@ pub fn handle_connection(
                     let cmd = &all_lines[0];
 
                     if conn.in_sub_mode && !ALLOWED_SUB_COMMANDS.contains(&cmd.as_str()) {
+                        eprintln!("IN SUB MODE IGNORING COMMAND:{:?}", all_lines);
                         conn.write_to_stream(SUBCRIBED_ERROR.as_bytes());
                         continue;
                     }
@@ -889,11 +890,10 @@ pub fn handle_connection(
                                     sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
                                 //TODO: check if channel has the subber first before adding
 
-                                if !chan.subscribers.is_empty()
-                                    && !chan
-                                        .subscribers
-                                        .iter()
-                                        .any(|sb| get_port(sb) == get_port(&conn.stream))
+                                if !chan
+                                    .subscribers
+                                    .iter()
+                                    .any(|sb| get_port(sb) == get_port(&conn.stream))
                                 {
                                     eprintln!("different subber");
                                     subber.channel_count += 1;
