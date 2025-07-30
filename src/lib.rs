@@ -4,5 +4,6 @@ pub mod handler;
 pub mod redis_connection;
 pub mod redis_database;
 pub mod redis_list;
+pub mod redis_subscriber;
 pub mod threadpool;
 pub mod utils;

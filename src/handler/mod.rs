@@ -17,6 +17,7 @@ use crate::redis_database::{
     read_rdb_file, write_rdb_file, RdbError, RdbFile, RedisDatabase, RedisValue,
 };
 use crate::redis_list::RedisList;
+use crate::redis_subscriber::{Channel, Subscriber};
 use crate::utils::{get_port, get_redis_int, get_resp_from_string, read_rdb_keys};
 
 use crate::constants::*;
@@ -38,6 +39,8 @@ pub fn handle_connection(
     new_db: Arc<Mutex<RedisDatabase>>,
     entry_streams: Arc<Mutex<HashMap<String, RedisEntryStream>>>,
     lists_map: Arc<Mutex<HashMap<String, RedisList>>>,
+    channels_db: Arc<Mutex<HashMap<String, Channel>>>,
+    subscribers_db: Arc<Mutex<HashMap<String, Subscriber>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -878,6 +881,19 @@ pub fn handle_connection(
                                         break;
                                     }
                                 });
+                            }
+                        }
+
+                        "subscribe" => {
+                            let chan_name = &all_lines[2];
+                            let mut chan_lk = channels_db.lock().unwrap();
+                            let chan = chan_lk
+                                .entry(chan_name.clone())
+                                .or_insert(Channel::new(chan_name));
+                            if let Some(port) = get_port(&conn.stream) {
+                                let mut sub_lk = subscribers_db.lock().unwrap();
+                                let subber =
+                                    sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
                             }
                         }
 

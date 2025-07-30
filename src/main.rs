@@ -8,6 +8,7 @@ use codecrafters_redis::handler::handle_connection;
 use codecrafters_redis::redis_connection::broadcast_info::BroadCastInfo;
 use codecrafters_redis::redis_database::{read_rdb_file, RedisDatabase};
 
+use codecrafters_redis::redis_subscriber::{Channel, Subscriber};
 use codecrafters_redis::threadpool::ThreadPool;
 
 use codecrafters_redis::redis_list::RedisList;
@@ -31,13 +32,21 @@ fn main() {
 
     let stream_pool = ThreadPool::new(25);
     let mut master_port: Option<String> = None;
+
     let broadcast_info: Arc<Mutex<BroadCastInfo>> = Arc::new(Mutex::new(BroadCastInfo::new()));
     let mut new_db = Arc::new(Mutex::new(RedisDatabase::new()));
+
     let streams_db: HashMap<String, RedisEntryStream> = HashMap::new();
     let streams_db = Arc::new(Mutex::new(streams_db));
 
+    let channels_db: HashMap<String, Channel> = HashMap::new();
+    let channels_db = Arc::new(Mutex::new(channels_db));
+
     let lists_map: HashMap<String, RedisList> = HashMap::new();
     let lists_map = Arc::new(Mutex::new(lists_map));
+
+    let subscribers_db: HashMap<String, Subscriber> = HashMap::new();
+    let subscribers_db = Arc::new(Mutex::new(subscribers_db));
 
     let mut b = arg_list.into_iter();
     while let Some(a) = b.next() {
@@ -101,6 +110,8 @@ fn main() {
                                 let use_stream = conn.try_clone().unwrap();
                                 let st_db = Arc::clone(&streams_db);
                                 let list_map = Arc::clone(&lists_map);
+                                let channel_db = Arc::clone(&channels_db);
+                                let subscriber_db = Arc::clone(&subscribers_db);
                                 stream_pool.execute(move || {
                                     let res = handle_connection(
                                         use_stream,
@@ -113,6 +124,8 @@ fn main() {
                                         use_db,
                                         st_db,
                                         list_map,
+                                        channel_db,
+                                        subscriber_db,
                                     );
                                     match res {
                                         Ok(_) => {}
@@ -167,6 +180,8 @@ fn main() {
                 let short_port = short_port.clone();
                 let st_db = Arc::clone(&streams_db);
                 let list_map = Arc::clone(&lists_map);
+                let channel_db = Arc::clone(&channels_db);
+                let subscriber_db = Arc::clone(&subscribers_db);
                 stream_pool.execute(move || {
                     let res = handle_connection(
                         s,
@@ -179,6 +194,8 @@ fn main() {
                         use_db,
                         st_db,
                         list_map,
+                        channel_db,
+                        subscriber_db,
                     );
                     match res {
                         Ok(_) => {}
