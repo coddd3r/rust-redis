@@ -187,7 +187,7 @@ impl RedisConnection {
 
                     Some('$') => {
                         // AT START OF RDB TRANSFER
-                        //eprintln!("ACTUAL RDB SECTION");
+                        eprintln!("ACTUAL RDB SECTION");
                         let rdb_len = match line_str[1..].trim().parse::<usize>() {
                             Ok(n) => n,
                             Err(_) => {
@@ -196,14 +196,14 @@ impl RedisConnection {
                         };
                         // Skip RDB data
 
-                        //eprintln!("found length {rdb_len}");
+                        eprintln!("found length {rdb_len}");
                         let rdb_start = self.position; // + line_str.len() + 2; // +1 for \r
                                                        //eprintln!("after, pos:{}", self.position);
                         let rdb_end = rdb_start + rdb_len;
-                        //eprintln!(
-                        //    "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
-                        //    self.buffer.len()
-                        //);
+                        eprintln!(
+                            "rdb start:{rdb_start} rdb_end:{rdb_end}, buffer length:{}",
+                            self.buffer.len()
+                        );
 
                         let _rdb_bytes: Vec<_> = self.buffer[rdb_start..rdb_end].into();
                         //eprintln!(
@@ -212,13 +212,13 @@ impl RedisConnection {
                         //);
                         //self.decode_rdb(rdb_bytes);
 
-                        //eprintln!("POSITION AFTER RDB:{}", self.position);
+                        eprintln!("POSITION AFTER RDB:{}", self.position);
                         self.position = rdb_end;
 
-                        //eprintln!("\n\nafter rdb OFFSET:{}", self.offset);
+                        eprintln!("\n\nafter rdb OFFSET:{}", self.offset);
                         //reset offset after handshake
                         self.offset = self.buffer.len() - self.position;
-                        //eprintln!("after reset OFFSET:{}\n\n", self.offset);
+                        eprintln!("after reset OFFSET:{}\n\n", self.offset);
 
                         break;
                     }
