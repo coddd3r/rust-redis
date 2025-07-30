@@ -885,7 +885,8 @@ pub fn handle_connection(
                         }
 
                         "subscribe" => {
-                            let chan_name = &all_lines[2];
+                            eprintln!("received subscription!");
+                            let chan_name = &all_lines[1];
                             let mut chan_lk = channels_db.lock().unwrap();
                             let chan = chan_lk
                                 .entry(chan_name.clone())
@@ -894,6 +895,13 @@ pub fn handle_connection(
                                 let mut sub_lk = subscribers_db.lock().unwrap();
                                 let subber =
                                     sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
+                                subber.channel_count += 1;
+                                chan.subscribers.push(conn.stream.try_clone().unwrap());
+                                response_to_write = format!(
+                                    "*3\r\n{}{chan_name}{}",
+                                    get_bulk_string("subscribe"),
+                                    get_redis_int(subber.channel_count as i32)
+                                );
                             }
                         }
 
