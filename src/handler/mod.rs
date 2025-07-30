@@ -834,27 +834,26 @@ pub fn handle_connection(
                             // scope to make sure lock is dropped after match
                             {
                                 let mut lk = lists_map.lock().unwrap();
-                                let search_opt = lk.get_mut(&key);
-                                match search_opt {
-                                    Some(use_list) => {
-                                        if blocking_time == 0 && !use_list.values.is_empty() {
-                                            response_to_write =
-                                                get_bulk_string(&use_list.values.remove(0));
-                                        } else if blocking_time == 0 {
-                                            use_list
-                                                .blocking_pop_streams
-                                                .push(conn.stream.try_clone().unwrap());
-                                        } else {
-                                            let blocking_dur =
-                                                Duration::from_millis(blocking_time as u64);
-                                            timed_block = Some((
-                                                conn.stream.try_clone().unwrap(),
-                                                blocking_dur,
-                                            ));
-                                        }
-                                    }
-                                    None => response_to_write = RESP_NULL.to_string(),
+                                //let search_opt = lk.get_mut(&key);
+                                //let mut search_opt = None;
+                                let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+
+                                //match search_opt {
+                                //    Some(use_list) => {
+                                if blocking_time == 0 && !use_list.values.is_empty() {
+                                    response_to_write = get_bulk_string(&use_list.values.remove(0));
+                                } else if blocking_time == 0 {
+                                    use_list
+                                        .blocking_pop_streams
+                                        .push(conn.stream.try_clone().unwrap());
+                                } else {
+                                    let blocking_dur = Duration::from_millis(blocking_time as u64);
+                                    timed_block =
+                                        Some((conn.stream.try_clone().unwrap(), blocking_dur));
                                 }
+                                //}
+                                //    None => response_to_write = RESP_NULL.to_string(),
+                                //}
                             }
 
                             if let Some((mut st, blocking_dur)) = timed_block {
