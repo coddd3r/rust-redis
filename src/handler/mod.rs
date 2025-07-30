@@ -140,7 +140,7 @@ pub fn handle_connection(
                         }
                         "ping" => {
                             if conn.in_sub_mode {
-                                response_to_write = conn.format_resp_array(&["PONG", ""]);
+                                response_to_write = conn.format_resp_array(&["pong", ""]);
                             } else if !sent_by_main {
                                 response_to_write = PONG_RESPONSE.to_string();
                             }
@@ -907,6 +907,27 @@ pub fn handle_connection(
                                     conn.in_sub_mode = true;
                                 } else {
                                     eprintln!("\n\nALREADY SUBBED!!\n");
+                                }
+                            }
+                        }
+
+                        "publish" => {
+                            let chan_name = &all_lines[1];
+                            let msg = &all_lines[2];
+                            let lk = channels_db.lock().unwrap();
+                            if let Some(curr_chan) = lk.get(chan_name) {
+                                let num_subs = curr_chan.subscribers.len();
+                                response_to_write = get_redis_int(num_subs as i32);
+
+                                for mut st in &curr_chan.subscribers {
+                                    let _ = st.write_all(
+                                        conn.format_resp_array(&[
+                                            "message",
+                                            chan_name,
+                                            msg.as_str(),
+                                        ])
+                                        .as_bytes(),
+                                    );
                                 }
                             }
                         }
