@@ -947,7 +947,7 @@ pub fn handle_connection(
                                         let num_chans = (conn.num_channels + 0) as i32;
                                         response_to_write = format!(
                                             "*3\r\n{}{}{}",
-                                            get_bulk_string("subscribe"),
+                                            get_bulk_string("unsubscribe"),
                                             get_bulk_string(chan_name),
                                             get_redis_int(num_chans)
                                         );
