@@ -715,9 +715,11 @@ pub fn handle_connection(
                             all_lines[2..].iter().for_each(|e| {
                                 use_list.values.push(e.clone());
                             });
-                            response_to_write = get_redis_int(use_list.values.len() as i32);
 
                             use_list.check_waiting_streams();
+
+                            let num_vals = use_list.values.len();
+                            response_to_write = get_redis_int(num_vals as i32);
                         }
 
                         "lpush" => {
@@ -728,7 +730,9 @@ pub fn handle_connection(
                             all_lines[2..].iter().for_each(|e| {
                                 use_list.values.splice(0..0, [e.clone()]);
                             });
+
                             use_list.check_waiting_streams();
+
                             let num_vals = use_list.values.len();
                             response_to_write = get_redis_int(num_vals as i32);
                         }
