@@ -846,8 +846,8 @@ pub fn handle_connection(
                                         .blocking_pop_streams
                                         .push(conn.stream.try_clone().unwrap());
                                 } else {
-                                    let blocking_ns = (blocking_time * 1_000_000.0) as u64;
-                                    let blocking_dur = Duration::from_nanos(blocking_ns);
+                                    let blocking_ms = (blocking_time * 1_000.0) as u64;
+                                    let blocking_dur = Duration::from_millis(blocking_ms);
                                     timed_block =
                                         Some((conn.stream.try_clone().unwrap(), blocking_dur));
                                 }
