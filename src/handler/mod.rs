@@ -932,6 +932,20 @@ pub fn handle_connection(
                             }
                         }
 
+                        "unsubscribe" => {
+                            let chan_name = &all_lines[1];
+                            let mut lk = channels_db.lock().unwrap();
+                            if let Some(curr_chan) = lk.get_mut(chan_name) {
+                                for i in 0..curr_chan.subscribers.len() {
+                                    if get_port(&curr_chan.subscribers[i]) == get_port(&conn.stream)
+                                    {
+                                        curr_chan.subscribers.remove(i);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",
