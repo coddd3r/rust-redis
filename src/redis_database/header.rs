@@ -5,7 +5,7 @@
 
 The header contains the magic string REDIS, followed by a four-character RDB version number. In this challenge, the test RDB files all use version 11. So, the header is always REDIS0011.
 */
-use crate::error::{RdbError, Result};
+use crate::redis_database::{RdbError, Result};
 use std::io::{Read, Write};
 
 const RDB_HEADER: &[u8] = b"REDIS";

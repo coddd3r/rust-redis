@@ -7,8 +7,8 @@ FA                             // Indicates the start of a metadata subsection.
 The metadata name and value are always string encoded.
 
 */
-use crate::encoding::{read_string, write_string};
-use crate::error::Result;
+use crate::redis_database::encoding::{read_string, write_string};
+use crate::redis_database::Result;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 

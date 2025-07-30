@@ -1,4 +1,6 @@
-use crate::{entry_stream::RedisEntry, utils::get_bulk_string};
+use crate::constants::*;
+use crate::entry_stream::RedisEntry;
+use crate::utils::get_bulk_string;
 
 // Get stream name and seq id pairs
 pub fn get_all_stream_names(lines: &[String]) -> Vec<(String, String)> {
@@ -25,7 +27,7 @@ pub fn get_all_stream_names(lines: &[String]) -> Vec<(String, String)> {
 pub fn get_xread_resp_array(v: &Vec<(String, Vec<(String, RedisEntry)>)>) -> String {
     if v.is_empty() {
         //eprintln!("getting resp arr for empty");
-        return crate::RESP_NULL.into();
+        return RESP_NULL.into();
     }
 
     //let mut resp = b"*1\r\n".to_vec();

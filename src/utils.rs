@@ -1,21 +1,7 @@
 use rand::Rng;
-use std::error::Error;
-use std::io::{prelude::*, BufReader};
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
-use std::fs::File;
-use std::io::{BufWriter, Read, Write};
-use std::time::UNIX_EPOCH;
-
-use codecrafters_redis::print_hex::print_hex_dump;
-use codecrafters_redis::{
-    print_hex, read_rdb_file, write_rdb_file, Expiration, RdbError, RdbFile, RedisDatabase,
-    RedisValue,
-};
-
-use crate::resp_parser::{BroadCastInfo, RespConnection};
+use crate::redis_database::RdbFile;
 
 //pub fn get_bulk_string(res: &str) -> Vec<u8> {
 pub fn get_bulk_string(res: &str) -> String {
@@ -67,7 +53,7 @@ pub fn read_rdb_keys(rdb: RdbFile, search_key: String) -> Vec<String> {
     ////eprintln!("Successful rdb read");
     let mut ret_keys = Vec::new();
     //get by index
-    // TODO! instead of hardcoding, find the latest key, i.e largest num
+    // TODO: instead of hardcoding, find the latest key, i.e largest num
     if let Some(db) = rdb.databases.get(&0) {
         ////eprintln!("GOT DB ROM RDB FILE {:?}", db);
         match search_key.as_str() {
@@ -253,61 +239,6 @@ pub fn get_port(stream: &TcpStream) -> Option<String> {
 //    }
 //    //eprintln!("after clients lopp in broadcast");
 //}
-
-pub fn handle_set(
-    k: String,
-    v: String,
-    new_db: &Arc<Mutex<RedisDatabase>>,
-    expiry_info: Option<(&str, &str)>,
-) -> Result<(), Box<RdbError>> {
-    eprintln!("HANDLING SET FOR K:{k}, V:{v}");
-    let mut use_insert = RedisValue {
-        value: v,
-        expires_at: None,
-    };
-    if let Some((expiry_type, expiry_time)) = expiry_info {
-        match expiry_type {
-            "px" => {
-                let time_arg: u64 = expiry_time.parse().expect("failed to parse expiry time");
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64; ////eprintln!("got MILLISECONDS expiry:{time_arg}");
-                let end_time_s = now + time_arg;
-                ////eprintln!("AT: {now}, MSexpiry:{time_arg},end:{end_time_s}");
-                let use_expiry = Some(Expiration::Milliseconds(end_time_s));
-                use_insert.expires_at = use_expiry;
-            }
-            "ex" => {
-                let time_arg: u32 = expiry_time.parse().expect("failed to parse expiry time");
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                let end_time_s = now as u32 + time_arg;
-
-                ////eprintln!("AT: {now}, got SECONDS expiry:{time_arg}, expected end:{end_time_s}");
-                let use_expiry = Some(Expiration::Seconds(end_time_s as u32));
-                use_insert.expires_at = use_expiry;
-            }
-            _ => {
-                return Err(Box::new(RdbError::UnsupportedFeature(
-                    "WRONG SET ARGUMENTS",
-                )))
-            }
-        }
-        ////eprintln!("before inserting in db, expiry:{:?}", use_expiry);
-    }
-
-    {
-        eprintln!("IN HANDLE SET FUNCTION, BEFORE LOCK");
-        let mut lk = new_db.lock().unwrap();
-        lk.insert(k.clone(), use_insert);
-        let res = lk.get(&k);
-        eprintln!("IN HANDLE SET FUNCTION, AFTER LOCK GET RES: {:?}", res);
-    }
-    Ok(())
-}
 
 //pub fn handle_get(
 //    get_key: &str,

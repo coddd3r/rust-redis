@@ -1,14 +1,15 @@
 use std::{
     collections::HashMap,
-    fmt::format,
     io::Write,
     net::TcpStream,
-    thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use crate::entry_stream::entry_utils::get_xread_resp_array;
+use crate::utils::get_bulk_string;
+
+pub mod entry_utils;
 use crate::constants::*;
-use crate::{entry_utils::get_xread_resp_array, utils::get_bulk_string};
 
 /*
 * XADD some_key 1526985054069-0 temperature 36 humidity 95
@@ -186,7 +187,7 @@ impl RedisEntryStream {
         //eprintln!("IN XRANGE FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         if self.first_sequence_id.is_none() {
-            return crate::RESP_NULL.into();
+            return RESP_NULL.into();
         }
 
         let start_time = &{
@@ -249,7 +250,7 @@ impl RedisEntryStream {
     pub fn get_stream_resp_array(&self, v: &Vec<(String, RedisEntry)>) -> String {
         if v.is_empty() {
             //eprintln!("getting resp arr for empty");
-            return crate::RESP_NULL.into();
+            return RESP_NULL.into();
         }
 
         let mut resp = format!("*{}\r\n", v.len());

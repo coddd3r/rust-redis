@@ -68,7 +68,7 @@ C2 87 D6 12 00
 C3 ...
 * */
 
-use crate::print_hex::print_hex;
+use super::print_hex::print_hex;
 
 use super::error::{RdbError, Result};
 use std::io::{Read, Write};

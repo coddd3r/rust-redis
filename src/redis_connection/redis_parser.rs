@@ -1,59 +1,11 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::fs::{self, File};
-use std::io::{prelude::*, BufReader, BufWriter, Write};
-use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
-use std::str::from_utf8;
-use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Instant;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{env, usize};
+use std::io::{prelude::*, Write};
+use std::net::TcpStream;
+use std::usize;
 
-use codecrafters_redis::RedisDatabase;
-
-use std::io::{BufRead, ErrorKind};
+use std::io::ErrorKind;
 
 #[derive(Debug)]
-pub struct BroadCastInfo {
-    pub connections: Vec<RespConnection>,
-    next_id: usize,
-    pub ports: Vec<String>,
-    pub num_waiting_for: usize,
-    pub waiting_until: SystemTime,
-    pub num_acks: usize,
-}
-
-impl BroadCastInfo {
-    pub fn new() -> Self {
-        BroadCastInfo {
-            connections: Vec::new(),
-            next_id: 0,
-            ports: Vec::new(),
-            num_waiting_for: 0,
-            num_acks: 0,
-            waiting_until: SystemTime::now(),
-        }
-    }
-
-    //pub fn add_connection(&mut self, stream: Arc<Mutex<TcpStream>>) -> usize {
-    pub fn add_connection(&mut self, stream: TcpStream) -> usize {
-        let id = self.next_id;
-        self.connections.push(RespConnection::new(stream));
-        self.next_id += 1;
-        id
-    }
-    pub fn broadcast_command(&mut self, command: &[String]) {
-        for conn in &mut self.connections {
-            conn.broadcast_command(command)
-            // Handle disconnection if needed
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct RespConnection {
+pub struct RedisConnection {
     pub stream: TcpStream,
     pub buffer: Vec<u8>,
     pub position: usize,
@@ -63,11 +15,11 @@ pub struct RespConnection {
     pub multi_waiting: bool,
 }
 
-impl RespConnection {
+impl RedisConnection {
     //pub fn new(stream: Arc<Mutex<TcpStream>>) -> Self {
     pub fn new(stream: TcpStream) -> Self {
         stream.set_nonblocking(true).unwrap();
-        RespConnection {
+        RedisConnection {
             stream: stream,
             buffer: Vec::new(),
             position: 0,
@@ -326,13 +278,8 @@ impl RespConnection {
         // sleep(Duration::from_millis(5));
     }
 
-    // pub fn get_simple_str(&self, s: &str) -> Vec<u8> {
-    //     let ret = format!("+{s}\r\n");
-    //     ret.as_bytes().into()
-    // }
     pub fn get_simple_str(&self, s: &str) -> String {
         format!("+{s}\r\n")
-        //ret.as_bytes().into()
     }
 
     // pub fn decode_rdb(&self, received_rdb: Vec<u8>) {

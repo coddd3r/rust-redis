@@ -13,9 +13,8 @@ Here's a more formal description of how each key-value pair is stored:
     Key (string encoded)
     Value (encoding depends on value type)
 * */
-use crate::encoding::{read_string, write_string};
-use crate::error::{RdbError, Result};
-use crate::types::{Expiration, RedisDatabase, RedisValue};
+use crate::redis_database::encoding::{read_string, write_string};
+use crate::redis_database::{Expiration, RdbError, RedisDatabase, RedisValue, Result};
 use std::io::{Read, Write};
 
 pub const DB_SELECTOR: u8 = 0xFE;
