@@ -128,7 +128,8 @@ pub fn handle_connection(
 
                     if conn.in_sub_mode && !ALLOWED_SUB_COMMANDS.contains(&cmd.as_str()) {
                         eprintln!("IN SUB MODE IGNORING COMMAND:{:?}", all_lines);
-                        conn.write_to_stream(SUBCRIBED_ERROR.as_bytes());
+                        let use_err = format!("-ERR Can't execute '{cmd}': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context\r\n");
+                        conn.write_to_stream(use_err.as_bytes());
                         continue;
                     }
                     //eprintln!("handling command:{cmd}");
