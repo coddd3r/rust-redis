@@ -906,6 +906,8 @@ pub fn handle_connection(
                                         get_redis_int(num_chans)
                                     );
                                     conn.in_sub_mode = true;
+                                } else {
+                                    eprintln!("\n\nALREADY SUBBED!!\n");
                                 }
                             }
                         }
