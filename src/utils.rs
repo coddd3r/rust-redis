@@ -24,6 +24,7 @@ pub fn get_redis_int(n: i32) -> String {
     //format!(":{n}\r\n").as_bytes().into()
     format!(":{n}\r\n")
 }
+
 pub fn random_id_gen() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                             abcdefghijklmnopqrstuvwxyz\

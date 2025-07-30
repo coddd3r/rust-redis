@@ -710,32 +710,27 @@ pub fn handle_connection(
                         "rpush" => {
                             let key = &all_lines[1];
                             let mut lk = lists_map.lock().unwrap();
-                            let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+                            let use_list =
+                                lk.entry(key.clone()).or_insert(RedisList::new(key.clone()));
                             all_lines[2..].iter().for_each(|e| {
                                 use_list.values.push(e.clone());
                             });
                             response_to_write = get_redis_int(use_list.values.len() as i32);
 
-                            for _ in 0..use_list.blocking_pop_streams.len() {
-                                if !use_list.values.is_empty() {
-                                    let mut bl_stream = use_list.blocking_pop_streams.remove(0);
-                                    let _ = bl_stream.write_all(
-                                        get_bulk_string(&use_list.values.remove(0)).as_bytes(),
-                                    );
-                                } else {
-                                    break;
-                                }
-                            }
+                            use_list.check_waiting_streams();
                         }
 
                         "lpush" => {
                             let key = &all_lines[1];
                             let mut lk = lists_map.lock().unwrap();
-                            let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+                            let use_list =
+                                lk.entry(key.clone()).or_insert(RedisList::new(key.clone()));
                             all_lines[2..].iter().for_each(|e| {
                                 use_list.values.splice(0..0, [e.clone()]);
                             });
-                            response_to_write = get_redis_int(use_list.values.len() as i32);
+                            use_list.check_waiting_streams();
+                            let num_vals = use_list.values.len();
+                            response_to_write = get_redis_int(num_vals as i32);
                         }
 
                         "lrange" => {
@@ -834,14 +829,14 @@ pub fn handle_connection(
                             // scope to make sure lock is dropped after match
                             {
                                 let mut lk = lists_map.lock().unwrap();
-                                //let search_opt = lk.get_mut(&key);
-                                //let mut search_opt = None;
-                                let use_list = lk.entry(key.clone()).or_insert(RedisList::new());
+                                let use_list =
+                                    lk.entry(key.clone()).or_insert(RedisList::new(key.clone()));
 
-                                //match search_opt {
-                                //    Some(use_list) => {
                                 if blocking_time == 0 && !use_list.values.is_empty() {
-                                    response_to_write = get_bulk_string(&use_list.values.remove(0));
+                                    response_to_write = get_resp_from_string(&[
+                                        key.clone(),
+                                        use_list.values.remove(0),
+                                    ]);
                                 } else if blocking_time == 0 {
                                     use_list
                                         .blocking_pop_streams
@@ -851,9 +846,6 @@ pub fn handle_connection(
                                     timed_block =
                                         Some((conn.stream.try_clone().unwrap(), blocking_dur));
                                 }
-                                //}
-                                //    None => response_to_write = RESP_NULL.to_string(),
-                                //}
                             }
 
                             if let Some((mut st, blocking_dur)) = timed_block {
@@ -866,18 +858,14 @@ pub fn handle_connection(
                                         break;
                                     }
                                     let mut lk = use_lkd_db.lock().unwrap();
-                                    let search_opt = lk.get_mut(&key);
-                                    match search_opt {
-                                        Some(use_list) => {
-                                            if !use_list.values.is_empty() {
-                                                let _ = st.write_all(
-                                                    &get_bulk_string(&use_list.values.remove(0))
-                                                        .as_bytes(),
-                                                );
-                                                break;
-                                            }
-                                        }
-                                        None => {}
+                                    let use_list = lk
+                                        .entry(key.clone())
+                                        .or_insert(RedisList::new(key.clone()));
+                                    if !use_list.values.is_empty() {
+                                        let _ = st.write_all(
+                                            &get_bulk_string(&use_list.values.remove(0)).as_bytes(),
+                                        );
+                                        break;
                                     }
                                 });
                             }
