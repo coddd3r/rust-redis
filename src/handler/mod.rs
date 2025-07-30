@@ -869,7 +869,11 @@ pub fn handle_connection(
                                         .or_insert(RedisList::new(key.clone()));
                                     if !use_list.values.is_empty() {
                                         let _ = st.write_all(
-                                            &get_bulk_string(&use_list.values.remove(0)).as_bytes(),
+                                            get_resp_from_string(&[
+                                                key.clone(),
+                                                use_list.values.remove(0),
+                                            ])
+                                            .as_bytes(),
                                         );
                                         break;
                                     }
