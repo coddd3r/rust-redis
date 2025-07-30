@@ -827,7 +827,7 @@ pub fn handle_connection(
 
                         "blpop" => {
                             let key = all_lines[1].clone();
-                            let blocking_time = all_lines[2].parse::<usize>().unwrap();
+                            let blocking_time = all_lines[2].parse::<f64>().unwrap();
                             let mut timed_block = None;
 
                             // scope to make sure lock is dropped after match
@@ -836,17 +836,18 @@ pub fn handle_connection(
                                 let use_list =
                                     lk.entry(key.clone()).or_insert(RedisList::new(key.clone()));
 
-                                if blocking_time == 0 && !use_list.values.is_empty() {
+                                if blocking_time == 0.0 && !use_list.values.is_empty() {
                                     response_to_write = get_resp_from_string(&[
                                         key.clone(),
                                         use_list.values.remove(0),
                                     ]);
-                                } else if blocking_time == 0 {
+                                } else if blocking_time == 0.0 {
                                     use_list
                                         .blocking_pop_streams
                                         .push(conn.stream.try_clone().unwrap());
                                 } else {
-                                    let blocking_dur = Duration::from_millis(blocking_time as u64);
+                                    let blocking_dur =
+                                        Duration::from_nanos((blocking_time * 1_000_000.0) as u64);
                                     timed_block =
                                         Some((conn.stream.try_clone().unwrap(), blocking_dur));
                                 }
