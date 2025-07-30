@@ -46,3 +46,12 @@ pub const ZERO_ERROR: &str = "-ERR The ID specified in XADD must be greater than
 pub const SMALLER_ERROR: &str =
     "-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n";
 pub const EMPTY_ARRAY: &str = "*0\r\n";
+pub const SUBCRIBED_ERROR:&str= "-ERR Can't execute 'echo': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context";
+pub const ALLOWED_SUB_COMMANDS: [&str; 6] = [
+    "SUBSCRIBE",
+    "UNSUBSCRIBE",
+    "PSUBSCRIBE",
+    "PUNSUBSCRIBE",
+    "PING",
+    "QUIT",
+];

@@ -13,6 +13,7 @@ pub struct RedisConnection {
     pub prev_offset: usize,
     pub is_master: bool,
     pub multi_waiting: bool,
+    pub in_sub_mode: bool,
 }
 
 impl RedisConnection {
@@ -27,6 +28,7 @@ impl RedisConnection {
             prev_offset: 0,
             is_master: false,
             multi_waiting: false,
+            in_sub_mode: false,
         }
     }
 

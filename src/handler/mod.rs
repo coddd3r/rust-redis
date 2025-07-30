@@ -64,7 +64,6 @@ pub fn handle_connection(
         conn.write_to_stream(&use_bytes.as_bytes());
         let _res = conn.try_read_command();
         sleep(Duration::from_millis(10));
-        //eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(
             &conn
@@ -73,7 +72,6 @@ pub fn handle_connection(
         );
         let _res = conn.try_read_command();
         sleep(Duration::from_millis(10));
-        //eprintln!("Read result: {:?}", res);
 
         conn.write_to_stream(&conn.format_resp_array(&[PSYNC, "?", "-1"]).as_bytes());
         //ignore the last sent after psync
@@ -81,7 +79,6 @@ pub fn handle_connection(
 
     let mut write_command: Vec<_> = Vec::new();
 
-    //let mut waiting_until = SystemTime::now();
     let mut all_multi_commands = Vec::new();
     let mut is_exec_mode = false;
     let mut hold_all_exec_reponse: Vec<String> = Vec::new();
@@ -89,7 +86,6 @@ pub fn handle_connection(
         match conn.try_read_command() {
             Ok(Some(mut commands)) => {
                 eprintln!("ALL COMMANDS:{:?}", commands);
-                ////eprintln!("current broadcast info:{:?}", broadcast_info);
 
                 let mut response_to_write = String::new();
                 let mut exec_present = false;
@@ -125,14 +121,17 @@ pub fn handle_connection(
 
                 for all_lines in commands {
                     if all_lines.is_empty() {
-                        //eprintln!("COMMAND TOO SHORT: LINES {:?}", all_lines);
                         continue;
                     }
-                    //eprintln!("ALL LINES:{:?}", all_lines);
 
-                    let cmd = &all_lines[0].to_lowercase();
+                    let cmd = &all_lines[0];
+
+                    if conn.in_sub_mode && !ALLOWED_SUB_COMMANDS.contains(&cmd.as_str()) {
+                        conn.write_to_stream(SUBCRIBED_ERROR.as_bytes());
+                        continue;
+                    }
                     //eprintln!("handling command:{cmd}");
-                    match cmd.as_str() {
+                    match cmd.to_lowercase().as_str() {
                         "command" => {
                             //eprintln!("INITIATION, no command");
                             return Ok(());
@@ -888,15 +887,26 @@ pub fn handle_connection(
                                 let mut sub_lk = subscribers_db.lock().unwrap();
                                 let subber =
                                     sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
-                                subber.channel_count += 1;
-                                let num_chans = (subber.channel_count + 0) as i32;
-                                chan.subscribers.push(conn.stream.try_clone().unwrap());
-                                response_to_write = format!(
-                                    "*3\r\n{}{}{}",
-                                    get_bulk_string("subscribe"),
-                                    get_bulk_string(chan_name),
-                                    get_redis_int(num_chans)
-                                );
+                                //TODO: check if channel has the subber first before adding
+
+                                if !chan.subscribers.is_empty()
+                                    && !chan
+                                        .subscribers
+                                        .iter()
+                                        .any(|sb| get_port(sb) == get_port(&conn.stream))
+                                {
+                                    eprintln!("different subber");
+                                    subber.channel_count += 1;
+                                    let num_chans = (subber.channel_count + 0) as i32;
+                                    chan.subscribers.push(conn.stream.try_clone().unwrap());
+                                    response_to_write = format!(
+                                        "*3\r\n{}{}{}",
+                                        get_bulk_string("subscribe"),
+                                        get_bulk_string(chan_name),
+                                        get_redis_int(num_chans)
+                                    );
+                                    conn.in_sub_mode = true;
+                                }
                             }
                         }
 
