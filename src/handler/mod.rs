@@ -11,13 +11,13 @@ use std::time::{Duration, SystemTime};
 
 use crate::entry_stream::entry_utils::{get_all_stream_names, get_xread_resp_array};
 use crate::entry_stream::RedisEntryStream;
+use crate::redis_channel::Channel;
 use crate::redis_connection::broadcast_info::BroadCastInfo;
 use crate::redis_connection::redis_parser::RedisConnection;
 use crate::redis_database::{
     read_rdb_file, write_rdb_file, RdbError, RdbFile, RedisDatabase, RedisValue,
 };
 use crate::redis_list::RedisList;
-use crate::redis_subscriber::{Channel, Subscriber};
 use crate::utils::{get_port, get_redis_int, get_resp_from_string, read_rdb_keys};
 
 use crate::constants::*;
@@ -40,7 +40,7 @@ pub fn handle_connection(
     entry_streams: Arc<Mutex<HashMap<String, RedisEntryStream>>>,
     lists_map: Arc<Mutex<HashMap<String, RedisList>>>,
     channels_db: Arc<Mutex<HashMap<String, Channel>>>,
-    subscribers_db: Arc<Mutex<HashMap<String, Subscriber>>>,
+    //subscribers_db: Arc<Mutex<HashMap<String, Subscriber>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -883,32 +883,35 @@ pub fn handle_connection(
                             let chan = chan_lk
                                 .entry(chan_name.clone())
                                 .or_insert(Channel::new(chan_name));
-                            if let Some(port) = get_port(&conn.stream) {
-                                let mut sub_lk = subscribers_db.lock().unwrap();
-                                let subber =
-                                    sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
-                                //TODO: check if channel has the subber first before adding
+                            //let add_chan = chan_lk.get(&chan_name.clone()).unwrap();
+                            //if let Some(port) = get_port(&conn.stream) {
+                            //let mut sub_lk = subscribers_db.lock().unwrap();
+                            // let subber =
+                            //     sub_lk.entry(port.clone()).or_insert(Subscriber::new(port));
+                            //TODO: check if channel has the subber first before adding
 
-                                if !chan
-                                    .subscribers
-                                    .iter()
-                                    .any(|sb| get_port(sb) == get_port(&conn.stream))
-                                {
-                                    eprintln!("different subber");
-                                    subber.channel_count += 1;
-                                    let num_chans = (subber.channel_count + 0) as i32;
-                                    chan.subscribers.push(conn.stream.try_clone().unwrap());
-                                    response_to_write = format!(
-                                        "*3\r\n{}{}{}",
-                                        get_bulk_string("subscribe"),
-                                        get_bulk_string(chan_name),
-                                        get_redis_int(num_chans)
-                                    );
-                                    conn.in_sub_mode = true;
-                                } else {
-                                    eprintln!("\n\nALREADY SUBBED!!\n");
-                                }
+                            if !chan
+                                .subscribers
+                                .iter()
+                                .any(|sb| get_port(sb) == get_port(&conn.stream))
+                            {
+                                eprintln!("different subber");
+                                //subber.channel_count += 1;
+                                //conn.subbed_channels.push(chan_name.clone());
+                                conn.num_channels += 1;
+                                let num_chans = (conn.num_channels + 0) as i32;
+                                chan.subscribers.push(conn.stream.try_clone().unwrap());
+                                response_to_write = format!(
+                                    "*3\r\n{}{}{}",
+                                    get_bulk_string("subscribe"),
+                                    get_bulk_string(chan_name),
+                                    get_redis_int(num_chans)
+                                );
+                                conn.in_sub_mode = true;
+                            } else {
+                                eprintln!("\n\nALREADY SUBBED!!\n");
                             }
+                            //}
                         }
 
                         "publish" => {
@@ -937,12 +940,20 @@ pub fn handle_connection(
                             let mut lk = channels_db.lock().unwrap();
                             if let Some(curr_chan) = lk.get_mut(chan_name) {
                                 for i in 0..curr_chan.subscribers.len() {
-                                    if get_port(&curr_chan.subscribers[i]) == get_port(&conn.stream)
-                                    {
+                                    let curr_port = get_port(&conn.stream);
+                                    if get_port(&curr_chan.subscribers[i]) == curr_port {
                                         curr_chan.subscribers.remove(i);
                                         break;
                                     }
                                 }
+                                conn.num_channels -= 1;
+                                let num_chans = (conn.num_channels + 0) as i32;
+                                response_to_write = format!(
+                                    "*3\r\n{}{}{}",
+                                    get_bulk_string("subscribe"),
+                                    get_bulk_string(chan_name),
+                                    get_redis_int(num_chans)
+                                );
                             }
                         }
 

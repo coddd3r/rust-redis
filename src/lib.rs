@@ -1,9 +1,9 @@
 pub mod constants;
 pub mod entry_stream;
 pub mod handler;
+pub mod redis_channel;
 pub mod redis_connection;
 pub mod redis_database;
 pub mod redis_list;
-pub mod redis_subscriber;
 pub mod threadpool;
 pub mod utils;

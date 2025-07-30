@@ -14,6 +14,8 @@ pub struct RedisConnection {
     pub is_master: bool,
     pub multi_waiting: bool,
     pub in_sub_mode: bool,
+    //pub subbed_channels: Vec<String>,
+    pub num_channels: usize,
 }
 
 impl RedisConnection {
@@ -29,6 +31,8 @@ impl RedisConnection {
             is_master: false,
             multi_waiting: false,
             in_sub_mode: false,
+            //subbed_channels: Vec::new(),
+            num_channels: 0,
         }
     }
 
