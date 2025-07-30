@@ -379,7 +379,7 @@ pub fn handle_connection(
                             //eprintln!("HANDLING REPL CONF");
                             match all_lines[1].as_str() {
                                 GETACK => {
-                                    eprintln!("in get ack offset before - 37{},", conn.offset);
+                                    eprintln!("in get ack offset before - 37 is:{},", conn.offset);
                                     let curr_offset = conn.offset - 37;
                                     response_to_write = conn.format_resp_array(&[
                                         REPL_CONF,
