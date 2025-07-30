@@ -716,9 +716,9 @@ pub fn handle_connection(
                                 use_list.values.push(e.clone());
                             });
 
+                            let num_vals = use_list.values.len();
                             use_list.check_waiting_streams();
 
-                            let num_vals = use_list.values.len();
                             response_to_write = get_redis_int(num_vals as i32);
                         }
 
@@ -731,9 +731,9 @@ pub fn handle_connection(
                                 use_list.values.splice(0..0, [e.clone()]);
                             });
 
+                            let num_vals = use_list.values.len();
                             use_list.check_waiting_streams();
 
-                            let num_vals = use_list.values.len();
                             response_to_write = get_redis_int(num_vals as i32);
                         }
 
