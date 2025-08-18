@@ -41,6 +41,10 @@ impl RedisSortedSet {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.collection.len()
+    }
+
     pub fn insert(&mut self, score: &str, name: &str) -> bool {
         let new_score = score.parse::<f64>().unwrap();
 
@@ -50,10 +54,8 @@ impl RedisSortedSet {
                 name: name.clone(),
                 score: old_score,
             };
-            let mut pos = bin_search(&self.collection, &user_score);
-            if pos > self.collection.len() / 2 {
-                pos -= 1;
-            }
+            let pos = get_pos(&self.collection, &user_score);
+            eprintln!("REMOVING AT:{pos}");
             self.collection.remove(pos);
             self.insert(score, &name);
             false
@@ -72,8 +74,18 @@ impl RedisSortedSet {
             true
         }
     }
-    pub fn len(&self) -> usize {
-        self.collection.len()
+
+    pub fn rank(&self, member_name: &str) -> Option<usize> {
+        if let Some(score) = self.user_map.get(member_name) {
+            let user_score = UserScore {
+                score: *score,
+                name: member_name.to_string(),
+            };
+            let pos = get_pos(&self.collection, &user_score);
+            Some(pos)
+        } else {
+            None
+        }
     }
 }
 
@@ -91,6 +103,8 @@ fn bin_search(sub_vec: &[UserScore], search_item: &UserScore) -> usize {
         if mid_elem > search_item {
             eprintln!("{:?} is greater than {:?}", sub_vec[mid], search_item);
             bin_search(&sub_vec[0..mid], search_item)
+        } else if mid_elem == search_item {
+            mid
         } else {
             eprintln!("{:?} is less than {:?}", sub_vec[mid], search_item);
             mid + 1 + bin_search(&sub_vec[mid + 1..], search_item)
@@ -100,26 +114,8 @@ fn bin_search(sub_vec: &[UserScore], search_item: &UserScore) -> usize {
     res
 }
 
-//fn bin_find(sub_vec: &[UserScore], search_item: &UserScore) -> usize {
-//    let use_len = sub_vec.len();
-//    if use_len == 0 {
-//        return 0;
-//    }
-//
-//    let mid = use_len / 2;
-//    let mid_elem = &sub_vec[mid];
-//    if mid_elem == search_item {
-//        return mid;
-//    }
-//
-//    let res = {
-//        if mid_elem > search_item {
-//            eprintln!("{:?} is greater than {:?}", sub_vec[mid], search_item);
-//            bin_search(&sub_vec[0..mid], search_item)
-//        } else {
-//            eprintln!("{:?} is less than {:?}", sub_vec[mid], search_item);
-//            mid + bin_search(&sub_vec[mid + 1..], search_item)
-//        }
-//    };
-//    res
-//}
+fn get_pos(sub_vec: &[UserScore], search_item: &UserScore) -> usize {
+    let pos = bin_search(sub_vec, search_item);
+    eprintln!("IN GET POS returning position: {pos}");
+    pos
+}

@@ -978,6 +978,20 @@ pub fn handle_connection(
                             response_to_write = get_redis_int(use_num);
                         }
 
+                        "zrank" => {
+                            let set_name = &all_lines[1];
+                            let member_name = &all_lines[2];
+                            let lk = sets_map.lock().unwrap();
+                            if let Some(found_set) = lk.get(set_name) {
+                                if let Some(rank_res) = found_set.rank(member_name) {
+                                    response_to_write = get_redis_int(rank_res as i32)
+                                } else {
+                                    response_to_write = RESP_NULL.to_string();
+                                }
+                            } else {
+                                response_to_write = RESP_NULL.to_string();
+                            }
+                        }
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",
