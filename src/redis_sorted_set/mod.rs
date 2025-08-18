@@ -89,15 +89,19 @@ impl RedisSortedSet {
     }
 
     pub fn range_resp_array(&self, start: usize, end: usize) -> String {
-        let mut resp = format!("*{}\r\n", end - start + 1); //.into_bytes();
+        eprintln!("getting range, ALL members:{:?}", self.collection);
         let end = if end >= self.len() {
             self.len()
         } else {
             end + 1
         };
-        for element in &self.collection[start..end] {
+        //let mut use_len = end - start;
+
+        let mut resp = format!("*{}\r\n", end - start);
+        eprintln!("start:{start}, last(not included):{end}");
+        self.collection[start..end].iter().for_each(|element| {
             resp.push_str(&format!("${}\r\n{}\r\n", element.name.len(), element.name));
-        }
+        });
         resp
     }
 }
