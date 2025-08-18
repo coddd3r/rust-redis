@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::constants::EMPTY_ARRAY;
+
 #[derive(Debug, Default, Clone)]
 pub struct UserScore {
     score: f64,
@@ -88,21 +90,49 @@ impl RedisSortedSet {
         }
     }
 
-    pub fn range_resp_array(&self, start: usize, end: usize) -> String {
-        eprintln!("getting range, ALL members:{:?}", self.collection);
-        let end = if end >= self.len() {
-            self.len()
-        } else {
-            end + 1
-        };
-        //let mut use_len = end - start;
+    pub fn range_resp_array(&self, start: i32, end: i32) -> String {
+        let set_len = self.len() as i32;
+        let mut end = end;
+        let mut start = start;
+        /*An index of -1 refers to the last element, -2 to the second last, and so on.
+         * If a absolute value of the negative index is out of range (i.e. >= the cardinality of the sorted set),
+         * it is treated as 0 (start of the sorted set).*/
+        if end < 0 {
+            end = set_len + end
+        }
 
-        let mut resp = format!("*{}\r\n", end - start);
-        eprintln!("start:{start}, last(not included):{end}");
-        self.collection[start..end].iter().for_each(|element| {
-            resp.push_str(&format!("${}\r\n{}\r\n", element.name.len(), element.name));
-        });
-        resp
+        if start < 0 {
+            start = set_len + start
+        }
+
+        if end < 0 {
+            end = 0
+        }
+        if start < 0 {
+            start = 0
+        }
+
+        if start > end {
+            EMPTY_ARRAY.into()
+        } else if start > set_len {
+            EMPTY_ARRAY.into()
+        } else {
+            eprintln!("getting range, ALL members:{:?}", self.collection);
+            let end = end as usize;
+            let start = start as usize;
+            let end = if end >= self.len() {
+                self.len()
+            } else {
+                end + 1
+            };
+
+            let mut resp = format!("*{}\r\n", end - start);
+            eprintln!("start:{start}, last(not included):{end}");
+            self.collection[start..end].iter().for_each(|element| {
+                resp.push_str(&format!("${}\r\n{}\r\n", element.name.len(), element.name));
+            });
+            resp
+        }
     }
 }
 

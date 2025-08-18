@@ -11,16 +11,6 @@ use crate::utils::get_bulk_string;
 pub mod entry_utils;
 use crate::constants::*;
 
-/*
-* XADD some_key 1526985054069-0 temperature 36 humidity 95
-* */
-
-//#[derive(Debug)]
-//pub struct WaitingStream {
-//    pub blocked_conn: TcpStream,
-//    pub stream_id: String,
-//}
-
 #[derive(Debug, Clone)]
 pub struct RedisEntry {
     pub values: Vec<(String, String)>,

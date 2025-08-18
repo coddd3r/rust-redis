@@ -995,17 +995,12 @@ pub fn handle_connection(
 
                         "zrange" => {
                             let set_name = &all_lines[1];
-                            let start = all_lines[2].parse().unwrap();
-                            let end = all_lines[3].parse().unwrap();
+                            let start = all_lines[2].parse::<i32>().unwrap();
+                            let end = all_lines[3].parse::<i32>().unwrap();
                             let lk = sets_map.lock().unwrap();
-                            if start > end {
-                                response_to_write = EMPTY_ARRAY.into();
-                            } else if let Some(found_set) = lk.get(set_name) {
-                                if start > found_set.len() {
-                                    response_to_write = EMPTY_ARRAY.into()
-                                } else {
-                                    response_to_write = found_set.range_resp_array(start, end);
-                                }
+
+                            if let Some(found_set) = lk.get(set_name) {
+                                response_to_write = found_set.range_resp_array(start, end)
                             } else {
                                 response_to_write = EMPTY_ARRAY.into()
                             }
