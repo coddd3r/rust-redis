@@ -92,9 +92,9 @@ impl RedisEntryStream {
                 }
             }
 
-            //eprintln!("IN XADD waiting:{:?}", self.waiting_streams);
+            eprintln!("IN XADD waiting:{:?}", self.waiting_streams);
             if !self.waiting_streams.is_empty() {
-                //eprintln!("\n WAITIN FORRR \n\n");
+                eprintln!("\n WAITIN FORRR \n\n");
                 for (k, mut st) in &self.waiting_streams {
                     let mut resp_args = Vec::new();
                     let mut stream_id_and_entry = Vec::new();
@@ -103,14 +103,14 @@ impl RedisEntryStream {
                     st.write_all(&get_xread_resp_array(&resp_args).as_bytes())
                         .unwrap();
                 }
-                //eprintln!("AFTER FOR");
+                eprintln!("AFTER FOR");
                 self.waiting_streams = HashMap::new();
             }
 
             //eprintln!("creating entry with vec:{:?}", use_entry);
             self.entries.insert(entry_id.to_string(), use_entry);
 
-            //eprintln!("succesful insert curr stream:{:?}", self);
+            eprintln!("succesful insert curr stream:{:?}", self);
         }
         res.1
     }
@@ -258,11 +258,11 @@ impl RedisEntryStream {
         stream_name: &str,
         start: &str,
     ) -> Option<(String, Vec<(String, RedisEntry)>)> {
-        //eprintln!("IN XREAD FUNC, curr entries:{:?}", self.entries);
+        eprintln!("IN XREAD FUNC, curr entries:{:?}", self.entries);
         let mut check_keys = Vec::new();
         let start_t = {
             if self.first_sequence_id.is_none() {
-                //eprintln!("empty stream");
+                eprintln!("empty stream");
                 None
             } else if self.first_sequence_id.is_some() {
                 if self
@@ -300,10 +300,10 @@ impl RedisEntryStream {
             return None;
         }
 
-        //eprintln!("using start:{start_id}");
+        eprintln!("using start:{start_id}");
         match self.entries.get(&start_id) {
             Some(_ent) => {
-                //eprintln!("got a start entry:{:?}", ent);
+                eprintln!("got a start entry:{:?}", _ent);
                 let mut curr_id = Some(&start_id);
                 loop {
                     //eprintln!("in range-loop");
@@ -324,7 +324,7 @@ impl RedisEntryStream {
             None => {}
         }
 
-        //eprintln!("Got check keys:{:?}", check_keys);
+        eprintln!("Got check keys:{:?}", check_keys);
 
         Some((stream_name.to_string(), check_keys))
     }

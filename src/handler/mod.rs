@@ -603,7 +603,7 @@ pub fn handle_connection(
                                 //TODO: IF TIME STRING IS 0 add a blcoked stream conn clone to
                                 //waiting streams
 
-                                //eprintln!("\n\n\nGOT BLOCK with time{}\n\n\n", all_lines[2]);
+                                eprintln!("\n\n\nGOT BLOCK with time{}\n\n\n", all_lines[2]);
                                 let actual_time = time_str.as_ref().unwrap();
                                 full_block = actual_time == &0;
                                 time_to_block_for =
@@ -611,7 +611,7 @@ pub fn handle_connection(
                                 if !full_block {
                                     sleep(time_to_block_for);
                                 } else {
-                                    //eprintln!("\n\nFULL BLOCK\n\n");
+                                    eprintln!("\n\nFULL BLOCK\n\n");
                                 }
                                 all_streams = get_all_stream_names(&all_lines[4..]);
                             } else {
@@ -624,17 +624,17 @@ pub fn handle_connection(
                                 let curr_stream = lk
                                     .entry(stream_name.clone())
                                     .or_insert(RedisEntryStream::new());
-                                //eprintln!("curr stream{:?}", curr_stream);
+                                eprintln!("curr stream{:?}", curr_stream);
 
-                                //eprintln!("running xread for stream_name{:?}", &stream_name);
+                                eprintln!("running xread for stream_name{:?}", &stream_name);
                                 if full_block {
-                                    //eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
+                                    eprintln!("\n\n\nADDING FULL BLOCK\n\n\n");
                                     curr_stream.waiting_streams.insert(
                                         stream_name.clone(),
                                         conn.stream.try_clone().unwrap(),
                                     );
                                 } else {
-                                    //eprintln!("\n\n\nNOT full block\n\n\n");
+                                    eprintln!("\n\n\nNOT full block\n\n\n");
                                     let res = {
                                         if block {
                                             curr_stream.block_xread(
@@ -654,7 +654,7 @@ pub fn handle_connection(
                             }
 
                             let full_stream_bytes = get_xread_resp_array(&final_res);
-                            //eprintln!("FINAL xread res:{:?}", full_stream_bytes);
+                            eprintln!("FINAL xread res:{:?}", full_stream_bytes);
                             if !full_block {
                                 response_to_write = full_stream_bytes;
                             }
