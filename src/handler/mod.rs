@@ -18,6 +18,7 @@ use crate::redis_database::{
     read_rdb_file, write_rdb_file, RdbError, RdbFile, RedisDatabase, RedisValue,
 };
 use crate::redis_list::RedisList;
+use crate::redis_sorted_set::RedisSortedSet;
 use crate::utils::{get_port, get_redis_int, get_resp_from_string, read_rdb_keys};
 
 use crate::constants::*;
@@ -40,7 +41,7 @@ pub fn handle_connection(
     entry_streams: Arc<Mutex<HashMap<String, RedisEntryStream>>>,
     lists_map: Arc<Mutex<HashMap<String, RedisList>>>,
     channels_db: Arc<Mutex<HashMap<String, Channel>>>,
-    //subscribers_db: Arc<Mutex<HashMap<String, Subscriber>>>,
+    sets_map: Arc<Mutex<HashMap<String, RedisSortedSet>>>, //subscribers_db: Arc<Mutex<HashMap<String, Subscriber>>>,
 ) -> Result<(), Box<dyn Error>> {
     eprintln!(
         "handling_connection, master_port:{:?}, stream port:{:?}",
@@ -956,6 +957,25 @@ pub fn handle_connection(
                                     }
                                 }
                             }
+                        }
+
+                        "zadd" => {
+                            let set_name = &all_lines[1];
+                            let score = &all_lines[2];
+                            let name = &all_lines[3];
+                            let mut lk = sets_map.lock().unwrap();
+                            let curr_set =
+                                lk.entry(set_name.clone()).or_insert(RedisSortedSet::new());
+                            let is_new = curr_set.insert(&score, &name);
+                            eprintln!("\n\nSETS MAP LOCK RELEASED\n\n");
+                            let use_num = {
+                                if is_new {
+                                    1
+                                } else {
+                                    0
+                                }
+                            };
+                            response_to_write = get_redis_int(use_num);
                         }
 
                         _unrecognized_cmd => {

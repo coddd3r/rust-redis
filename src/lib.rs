@@ -5,5 +5,6 @@ pub mod redis_channel;
 pub mod redis_connection;
 pub mod redis_database;
 pub mod redis_list;
+pub mod redis_sorted_set;
 pub mod threadpool;
 pub mod utils;
