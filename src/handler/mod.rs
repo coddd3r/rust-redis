@@ -1017,6 +1017,22 @@ pub fn handle_connection(
                             }
                         }
 
+                        "zscore" => {
+                            let set_name = &all_lines[1];
+                            let member_name = &all_lines[2];
+                            let lk = sets_map.lock().unwrap();
+
+                            if let Some(found_set) = lk.get(set_name) {
+                                if let Some(score) = found_set.get_member(&member_name) {
+                                    response_to_write = get_bulk_string(&score.to_string());
+                                } else {
+                                    response_to_write = RESP_NULL.into();
+                                }
+                            } else {
+                                response_to_write = RESP_NULL.into();
+                            }
+                        }
+
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",

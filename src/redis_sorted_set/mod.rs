@@ -77,6 +77,10 @@ impl RedisSortedSet {
         }
     }
 
+    pub fn get_member(&self, name: &str) -> Option<&f64> {
+        self.user_map.get(name)
+    }
+
     pub fn rank(&self, member_name: &str) -> Option<usize> {
         if let Some(score) = self.user_map.get(member_name) {
             let user_score = UserScore {
