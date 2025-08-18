@@ -90,8 +90,12 @@ impl RedisSortedSet {
 
     pub fn range_resp_array(&self, start: usize, end: usize) -> String {
         let mut resp = format!("*{}\r\n", end - start + 1); //.into_bytes();
-        let end = if end > self.len() { self.len() } else { end };
-        for element in &self.collection[start..(end + 1)] {
+        let end = if end >= self.len() {
+            self.len()
+        } else {
+            end + 1
+        };
+        for element in &self.collection[start..end] {
             resp.push_str(&format!("${}\r\n{}\r\n", element.name.len(), element.name));
         }
         resp
