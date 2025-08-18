@@ -87,6 +87,15 @@ impl RedisSortedSet {
             None
         }
     }
+
+    pub fn range_resp_array(&self, start: usize, end: usize) -> String {
+        let mut resp = format!("*{}\r\n", end - start + 1); //.into_bytes();
+        let end = if end > self.len() { self.len() } else { end };
+        for element in &self.collection[start..(end + 1)] {
+            resp.push_str(&format!("${}\r\n{}\r\n", element.name.len(), element.name));
+        }
+        resp
+    }
 }
 
 fn bin_search(sub_vec: &[UserScore], search_item: &UserScore) -> usize {
