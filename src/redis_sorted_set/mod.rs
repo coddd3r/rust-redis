@@ -105,6 +105,7 @@ impl RedisSortedSet {
             start = set_len + start
         }
 
+        //IF still negative
         if end < 0 {
             end = 0
         }

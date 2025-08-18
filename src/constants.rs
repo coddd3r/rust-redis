@@ -40,6 +40,7 @@ pub const QUEUED_RESP: &str = "+QUEUED\r\n";
 pub const PONG_RESPONSE: &str = "+PONG\r\n";
 pub const RESP_OK: &str = "+OK\r\n";
 pub const RESP_NULL: &str = "$-1\r\n";
+pub const ZERO_INT: &str = ":0\r\n";
 pub const STRING: &str = "+string\r\n";
 pub const NONE_TYPE: &str = "+none\r\n";
 pub const ZERO_ERROR: &str = "-ERR The ID specified in XADD must be greater than 0-0\r\n";

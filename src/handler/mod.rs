@@ -1006,6 +1006,17 @@ pub fn handle_connection(
                             }
                         }
 
+                        "zcard" => {
+                            let set_name = &all_lines[1];
+                            let lk = sets_map.lock().unwrap();
+
+                            if let Some(found_set) = lk.get(set_name) {
+                                response_to_write = get_redis_int(found_set.len() as i32);
+                            } else {
+                                response_to_write = ZERO_INT.into();
+                            }
+                        }
+
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",
