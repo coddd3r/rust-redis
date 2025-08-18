@@ -1033,6 +1033,22 @@ pub fn handle_connection(
                             }
                         }
 
+                        "zrem" => {
+                            let set_name = &all_lines[1];
+                            let member_name = &all_lines[2];
+                            let mut lk = sets_map.lock().unwrap();
+
+                            if let Some(found_set) = lk.get_mut(set_name) {
+                                if found_set.remove_member(&member_name) {
+                                    response_to_write = get_redis_int(1);
+                                } else {
+                                    response_to_write = ZERO_INT.into()
+                                }
+                            } else {
+                                response_to_write = ZERO_INT.into()
+                            }
+                        }
+
                         _unrecognized_cmd => {
                             return Err(Box::new(RdbError::UnsupportedFeature(
                                 "UNRECOGNIZED COMMAND",

@@ -56,9 +56,7 @@ impl RedisSortedSet {
                 name: name.clone(),
                 score: old_score,
             };
-            let pos = get_pos(&self.collection, &user_score);
-            eprintln!("REMOVING AT:{pos}");
-            self.collection.remove(pos);
+            self.collection_remove(&user_score);
             self.insert(score, &name);
             false
         } else {
@@ -77,8 +75,26 @@ impl RedisSortedSet {
         }
     }
 
+    pub fn collection_remove(&mut self, user_score: &UserScore) {
+        let pos = get_pos(&self.collection, &user_score);
+        eprintln!("REMOVING AT:{pos}");
+        self.collection.remove(pos);
+    }
     pub fn get_member(&self, name: &str) -> Option<&f64> {
         self.user_map.get(name)
+    }
+
+    pub fn remove_member(&mut self, name: &str) -> bool {
+        let rem_score = self.user_map.remove(name);
+        let ret = rem_score.is_some();
+        if ret {
+            let user_score = UserScore {
+                name: name.to_string(),
+                score: rem_score.unwrap(),
+            };
+            self.collection_remove(&user_score);
+        }
+        ret
     }
 
     pub fn rank(&self, member_name: &str) -> Option<usize> {
